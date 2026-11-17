@@ -16,6 +16,10 @@
 // the municipalities with a comparable harvested area (lib/classify.ts), and `yield` the
 // yield of one cell; the yield operations read the production matrix of the reference and
 // the harvested-area matrix next to it (siblingFile), as the data contract defines yield.
+// For the territories of the place files: `share` is a value over Brazil's at the same
+// pointer of places/country.json, and `areayield` the yield of a territory, its production
+// over the harvested area at the same place of the file (sum over sum, never a mean of
+// municipal yields).
 // Markup: `data-src` holds the references; rows of a columnar table use `data-row` on the
 // element and `data-src-table` + `data-src-cols` ("col|format,col|format") on an ancestor.
 // This module is shared by the build (Node) and the test runner, so it never touches the
@@ -34,6 +38,8 @@ export type Op =
   | "member"
   | "circle"
   | "ybreak"
+  | "share"
+  | "areayield"
   | "yield";
 
 export interface Ref {
@@ -54,11 +60,13 @@ const OPS = new Set<string>([
   "member",
   "circle",
   "ybreak",
+  "share",
+  "areayield",
   "yield",
 ]);
 const WITH_ARGUMENT = new Set<string>(["count", "circle", "ybreak"]);
 const NEEDS_ARGUMENT = new Set<string>(["circle", "ybreak"]);
-const FORMATS = new Set<string>(["int", "year", "pct", "spct", "dec2", "sdec2", "text", "date"]);
+const FORMATS = new Set<string>(["int", "year", "pct", "spct", "dec2", "sdec2", "text", "date", "compact", "brl"]);
 
 export function serializeRef(ref: Ref): string {
   const op = ref.op ? `!${ref.op}${ref.arg !== undefined ? `:${ref.arg}` : ""}` : "";
@@ -127,8 +135,10 @@ function numbers(node: unknown, ref: Ref): number[] {
   return node.filter((v): v is number => typeof v === "number");
 }
 
-/** The harvested-area file a yield reference also reads, next to its production file. */
+/** The other file a reference reads: the harvested-area matrix next to a production one
+ *  for the yield operations, the country file for a share. */
 export function siblingFile(ref: Ref): string | null {
+  if (ref.op === "share") return "places/country.json";
   if (ref.op !== "yield" && ref.op !== "ybreak") return null;
   const slash = ref.file.lastIndexOf("/");
   return `${ref.file.slice(0, slash + 1)}harvested_area_ha.json`;
@@ -198,6 +208,22 @@ export function resolveRef(
           ? values.includes(value)
           : value >= Math.min(...values) && value <= Math.max(...values);
       if (!ok) throw new Error(`${value} is not ${ref.op} ${serializeRef(ref)}`);
+      return value;
+    }
+    case "share": {
+      const total = siblingNode();
+      if (typeof node !== "number" || typeof total !== "number" || total === 0) {
+        throw new Error(`${serializeRef(ref)} has no share`);
+      }
+      return node / total;
+    }
+    case "areayield": {
+      if (!ref.pointer.includes("/production_t/")) {
+        throw new Error(`${serializeRef(ref)} must point at a production value`);
+      }
+      const area = getPointer(doc, ref.pointer.replace("/production_t/", "/harvested_area_ha/"));
+      const value = yieldCell(typeof node === "number" ? node : null, typeof area === "number" ? area : null);
+      if (value === null) throw new Error(`${serializeRef(ref)} has no yield`);
       return value;
     }
     case "circle": {

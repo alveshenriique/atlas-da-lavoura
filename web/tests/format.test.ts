@@ -36,4 +36,16 @@ describe("format", () => {
     expect(() => format(null, "pct")).toThrow(TypeError);
     expect(() => format("73", "int")).toThrow(TypeError);
   });
+
+  it("shortens large amounts for a headline number", () => {
+    expect(format(165259014, "compact")).toBe("165,3 mi");
+    expect(format(47621662, "compact")).toBe("47,6 mi");
+    expect(format(2343000, "compact")).toBe("2,3 mi");
+    expect(format(12345, "compact")).toBe("12,3 mil");
+    expect(format(9999, "compact")).toBe("9.999");
+    expect(format(999960, "compact")).toBe("1,0 mi");
+    expect(format(1234567890, "compact")).toBe("1,2 bi");
+    expect(format(315194933, "brl")).toBe("R$ 315,2 bi");
+    expect(format(4329958, "brl")).toBe("R$ 4,3 bi");
+  });
 });

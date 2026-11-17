@@ -1,7 +1,9 @@
 // Number formats of the site, in Brazilian Portuguese. Negative numbers use the minus sign
 // (U+2212), as in the charts; percentages come from fractions (-0.09 -> "−9%"), as the data
-// contract publishes them.
-export type FormatName = "int" | "year" | "pct" | "spct" | "dec2" | "sdec2" | "text" | "date";
+// contract publishes them. `compact` shortens large amounts for a headline number
+// (165259014 -> "165,3 mi"); `brl` does the same for thousands of reais
+// (315194933 -> "R$ 315,2 bi").
+export type FormatName = "int" | "year" | "pct" | "spct" | "dec2" | "sdec2" | "text" | "date" | "compact" | "brl";
 
 export const MINUS = "−";
 
@@ -28,6 +30,30 @@ function asNumber(value: unknown): number {
   return value;
 }
 
+const oneDecimal = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+/** "165,3 mi", "4,2 bi", "12,5 mil"; below ten thousand, the whole number. */
+function compact(n: number): string {
+  const sign = n < 0 ? MINUS : "";
+  const a = Math.abs(n);
+  if (a < 1e4) return `${sign}${integer.format(Math.round(a))}`;
+  const units: [number, string][] = [
+    [1e9, "bi"],
+    [1e6, "mi"],
+    [1e3, "mil"],
+  ];
+  for (let k = 0; k < units.length; k++) {
+    const [size, word] = units[k] ?? [1, ""];
+    if (a < size) continue;
+    const r = Math.round((a / size) * 10) / 10;
+    // Rounding can reach the next unit: 999,960 reads "1,0 mi", not "1.000,0 mil".
+    const up = units[k - 1];
+    if (r >= 1000 && up) return `${sign}${oneDecimal.format(Math.round((a / up[0]) * 10) / 10)} ${up[1]}`;
+    return `${sign}${oneDecimal.format(r)} ${word}`;
+  }
+  return `${sign}${integer.format(Math.round(a))}`;
+}
+
 export function format(value: unknown, name: FormatName): string {
   if (name === "text") return String(value);
   if (name === "date") {
@@ -49,6 +75,11 @@ export function format(value: unknown, name: FormatName): string {
       const r = rounded(n * 100, 0);
       return withSign(`${Math.abs(r)}%`, r, name === "spct");
     }
+    case "compact":
+      return compact(n);
+    case "brl":
+      // Thousands of reais, as the data contract publishes values.
+      return `R$ ${compact(n * 1000)}`;
     case "dec2":
     case "sdec2": {
       const r = rounded(n, 2);
