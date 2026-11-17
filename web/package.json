@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "@astrojs/react": "7.1.4",
-    "astro": "^7.4.10",
+    "astro": "^7.4.12",
     "d3-array": "^3.2.5",
     "d3-delaunay": "^6.0.6",
     "d3-geo": "^3.1.2",
