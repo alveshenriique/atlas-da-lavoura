@@ -1,6 +1,8 @@
 ---
 // One static page per municipality, at /municipio/<código IBGE>/, generated from the
-// municipality index of the data package. Still a skeleton: the profile comes in its own step.
+// municipality index of the data package. Still a skeleton, with the "em construção" notice:
+// the profile comes in its own step.
+import UnderConstruction from "../../components/UnderConstruction.astro";
 import Base from "../../layouts/Base.astro";
 import { loadDataFile } from "../../lib/data";
 import { bindShortWords } from "../../lib/typography";
@@ -37,14 +39,17 @@ const { name, state, stateName } = Astro.props;
   title={`${name} (${state})`}
   description={`Ficha de ${name} (${stateName}): produção, comparação com a região e o estado, ranking e risco de seca da região.`}
 >
+  <UnderConstruction>
+    <p>
+      A ficha deste município (produção, comparação com a região e o estado, ranking e risco de
+      seca na floração da região) ainda está sendo feita. Enquanto isso, a produção dele pode
+      ser vista no mapa do <a href={`/explorar/?uf=${state}`}>Explorar, com {stateName} em foco</a>.
+    </p>
+  </UnderConstruction>
   <div class="container grid">
     <div class="col-text">
       <p class="kicker">Município · {stateName}</p>
       <h1>{bindShortWords(name)}</h1>
-      <p class="placeholder">
-        A ficha deste município está em construção: produção, comparação com a região e o
-        estado, ranking e risco de seca na floração da região.
-      </p>
       <p><a href="/">Voltar para a Análise</a></p>
     </div>
   </div>

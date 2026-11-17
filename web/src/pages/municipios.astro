@@ -1,4 +1,5 @@
 ---
+import UnderConstruction from "../components/UnderConstruction.astro";
 import Base from "../layouts/Base.astro";
 ---
 
@@ -6,12 +7,16 @@ import Base from "../layouts/Base.astro";
   title="Municípios"
   description="A ficha de cada município: produção, comparação com a região e o estado, ranking e risco de seca da região."
 >
+  <UnderConstruction>
+    <p>
+      A busca e a ficha de cada município (produção, comparação com a região e o estado,
+      ranking e risco de seca na floração da região) ainda estão sendo feitas. Enquanto isso, a
+      produção de cada município pode ser vista no mapa do <a href="/explorar/">Explorar</a>.
+    </p>
+  </UnderConstruction>
   <div class="container grid">
     <div class="col-text">
       <h1 class="page-title">Municípios</h1>
-      <p class="placeholder">
-        Esta página terá a busca de municípios e a ficha de cada um. Em construção.
-      </p>
     </div>
   </div>
 </Base>

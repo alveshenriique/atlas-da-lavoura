@@ -15,7 +15,8 @@
     "test": "vitest run",
     "e2e": "playwright test",
     "lhci:desktop": "lhci autorun --config=lighthouserc.desktop.json",
-    "lhci:mobile": "lhci autorun --config=lighthouserc.mobile.json"
+    "lhci:mobile": "lhci autorun --config=lighthouserc.mobile.json",
+    "og-image": "playwright test --config playwright.og.config.ts"
   },
   "dependencies": {
     "@astrojs/react": "7.1.9",

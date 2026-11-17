@@ -5,6 +5,7 @@ import "../styles/global.css";
 import Num from "../components/Num.astro";
 import { brdwgdShortCitation } from "../lib/citations";
 import { dataBasePath, loadCatalog } from "../lib/data";
+import { DBT_DOCS_URL, OG_IMAGE, pageStatus } from "../lib/site-pages";
 import { sourced } from "../lib/sourced";
 import { tokens } from "../lib/tokens";
 
@@ -35,6 +36,12 @@ const navigation = [
   { href: "/metodo/", label: "Método", match: ["/metodo/"] },
 ];
 const current = Astro.url.pathname;
+// Only finished pages are indexed (lib/site-pages.ts); unfinished ones and the 404 carry
+// noindex. Every page shares the link preview image, with absolute URLs on the site's domain.
+const indexable = pageStatus(current) === "ready";
+const fullTitle = `${title} · Atlas da Lavoura`;
+const canonical = new URL(current, Astro.site).href;
+const ogImage = new URL(OG_IMAGE.path, Astro.site).href;
 const isCurrent = (match: string[]) =>
   match.some((prefix) => (prefix === "/" ? current === "/" : current.startsWith(prefix)));
 ---
@@ -52,7 +59,21 @@ const isCurrent = (match: string[]) =>
       ))
     }
     <slot name="head" />
-    <title>{title} · Atlas da Lavoura</title>
+    <title>{fullTitle}</title>
+    {!indexable && <meta name="robots" content="noindex" />}
+    {pageStatus(current) !== null && <link rel="canonical" href={canonical} />}
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Atlas da Lavoura" />
+    <meta property="og:locale" content="pt_BR" />
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content={String(OG_IMAGE.width)} />
+    <meta property="og:image:height" content={String(OG_IMAGE.height)} />
+    <meta property="og:image:alt" content={OG_IMAGE.alt} />
+    <meta name="twitter:card" content="summary_large_image" />
   </head>
   <body>
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
@@ -101,6 +122,7 @@ const isCurrent = (match: string[]) =>
         </div>
         <ul class="site-footer__links">
           <li><a href="/metodo/">Método</a></li>
+          <li><a href={DBT_DOCS_URL}>Documentação do dbt</a></li>
           <li><a href={catalog.project.repository}>GitHub</a></li>
         </ul>
       </div>
