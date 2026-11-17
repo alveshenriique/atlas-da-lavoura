@@ -1,7 +1,7 @@
 // Every page must render the shared layout and pass axe (WCAG 2.x A and AA) in both
 // themes; the Playwright projects run each test under light and dark colour schemes.
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 
 const pages = [
   { path: "/", heading: "Quando falta chuva na floração, a soja rende menos", nav: "Análise", title: "Análise" },

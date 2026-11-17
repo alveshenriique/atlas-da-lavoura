@@ -3,7 +3,7 @@
 // colour scheme. Values are checked against the files of the data package, read here as the
 // browser reads them.
 import AxeBuilder from "@axe-core/playwright";
-import { type APIRequestContext, expect, type Page, test } from "@playwright/test";
+import { type APIRequestContext, expect, type Page, test } from "./test";
 
 import { format } from "../src/lib/format";
 import { findUnsourcedNumbers } from "./provenance";

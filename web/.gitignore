@@ -11,6 +11,9 @@ public/data/
 # Types generated from the JSON Schemas by scripts/generate-types.mjs.
 src/types/data/
 
+# Local state of `wrangler dev`.
+.wrangler/
+
 # Test output
 test-results/
 playwright-report/
