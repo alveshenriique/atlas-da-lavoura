@@ -126,7 +126,7 @@ O ajuste de sessão contorna o sintoma: com nested loops desligados, o planejado
 - a Plex Sans no texto corrido e na interface;
 - a Plex Mono nos números, rótulos e metadados (faixa superior, eixos, números de apoio, tabelas e números no meio das frases).
 
-A única exceção é o número de destaque da página (o 73% da Análise), em Plex Sans Bold, mais pesado que qualquer peso da Mono, como no rascunho aprovado. A identidade declara essa exceção em `DISPLAY_NUMBER`. As três famílias são da mesma superfamília e foram desenhadas juntas, então combinam sem disputar atenção, e a separação deixa claro o que é manchete, o que é texto e o que é dado. Os arquivos vêm dos releases oficiais da IBM (`@ibm/plex-serif@2.0.0`, fonte 3.006, e `@ibm/plex-mono@2.5.0`, fonte 2.005, com a mesma licença OFL da Sans) e entram só nos pesos usados: Serif Regular, Mono Regular e Mono SemiBold, além da Sans Regular e Bold. No repositório ficam os TTF, para o matplotlib, e no site os subsets Latin1 em woff2 (23, 18 e 18 KB). A Serif começou em SemiBold e passou para a Regular na comparação com o rascunho aprovado, em que os títulos são leves e grandes; continua sendo um peso só. A validação da Plex Sans virou automática para as cinco fontes, em `scripts/check_visual_identity.py`: nome da família, licença, todos os caracteres usados pelo projeto, zero sem traço nem ponto, I, l e 1 com contornos diferentes, altura do x de pelo menos 0,5 em (Sans 0,516, Serif 0,516, Mono 0,516) e o matplotlib escolhendo o arquivo certo para cada peso; o checker também exige que o peso do número de destaque exista entre os arquivos da Sans. Ela achou o único problema: o zero padrão da Plex Mono tem um ponto no meio. Isso deixaria anos e percentuais com a mesma aparência de defeito que eliminou a Atkinson Hyperlegible. O conjunto estilístico `ss04` da própria fonte troca esse zero pelo zero liso da Sans e da Serif (o recurso `zero` faria o oposto, cortando o zero) e não altera nenhum outro caractere. Por isso a identidade declara `ss04` como recurso sempre ligado na Mono, e o CSS gerado o aplica. Um teste confirma que o checker acusa o zero com ponto quando o `ss04` é retirado. Os `@font-face`, as pilhas de fontes e a escala de tamanhos do site (com `clamp()` entre 360 e 1.240 px de largura) são gerados de `identity.py` por `scripts/make_web_tokens.py`, com teste de drift. Alternativas descartadas: usar só a Sans com pesos diferentes, que não distingue o dado do texto; e uma serifa ou monoespaçada de outra família, que exigiria nova validação de legibilidade e criaria contraste de desenho sem função.
+A única exceção é o número de destaque da página (o 73% da Análise), em Plex Sans Bold, mais pesado que qualquer peso da Mono, como no rascunho aprovado. A identidade declara essa exceção em `DISPLAY_NUMBER`. No Explorar, o número do painel usa um recorte da Sans Bold só com os caracteres dos números (ver "Produto web: página Explorar, parte B"). As três famílias são da mesma superfamília e foram desenhadas juntas, então combinam sem disputar atenção, e a separação deixa claro o que é manchete, o que é texto e o que é dado. Os arquivos vêm dos releases oficiais da IBM (`@ibm/plex-serif@2.0.0`, fonte 3.006, e `@ibm/plex-mono@2.5.0`, fonte 2.005, com a mesma licença OFL da Sans) e entram só nos pesos usados: Serif Regular, Mono Regular e Mono SemiBold, além da Sans Regular e Bold. No repositório ficam os TTF, para o matplotlib, e no site os subsets Latin1 em woff2 (23, 18 e 18 KB). A Serif começou em SemiBold e passou para a Regular na comparação com o rascunho aprovado, em que os títulos são leves e grandes; continua sendo um peso só. A validação da Plex Sans virou automática para as cinco fontes, em `scripts/check_visual_identity.py`: nome da família, licença, todos os caracteres usados pelo projeto, zero sem traço nem ponto, I, l e 1 com contornos diferentes, altura do x de pelo menos 0,5 em (Sans 0,516, Serif 0,516, Mono 0,516) e o matplotlib escolhendo o arquivo certo para cada peso; o checker também exige que o peso do número de destaque exista entre os arquivos da Sans. Ela achou o único problema: o zero padrão da Plex Mono tem um ponto no meio. Isso deixaria anos e percentuais com a mesma aparência de defeito que eliminou a Atkinson Hyperlegible. O conjunto estilístico `ss04` da própria fonte troca esse zero pelo zero liso da Sans e da Serif (o recurso `zero` faria o oposto, cortando o zero) e não altera nenhum outro caractere. Por isso a identidade declara `ss04` como recurso sempre ligado na Mono, e o CSS gerado o aplica. Um teste confirma que o checker acusa o zero com ponto quando o `ss04` é retirado. Os `@font-face`, as pilhas de fontes e a escala de tamanhos do site (com `clamp()` entre 360 e 1.240 px de largura) são gerados de `identity.py` por `scripts/make_web_tokens.py`, com teste de drift. Alternativas descartadas: usar só a Sans com pesos diferentes, que não distingue o dado do texto; e uma serifa ou monoespaçada de outra família, que exigiria nova validação de legibilidade e criaria contraste de desenho sem função.
 
 **Uma fonte única para a identidade.** Cores (com papel, variantes e origem), tipografia, escala de tamanhos e o estilo do matplotlib ficam em `src/atlas_da_lavoura/viz/identity.py`. O estilo é gerado a partir das cores (`rc_params`, `apply_style`), e `as_dict()` exporta tudo num dicionário serializável em JSON, base para gerar o tema do Power BI. Alternativa descartada: arquivos `.mplstyle` com as cores escritas à mão, que repetiriam a paleta e deixariam o tema do Power BI sem uma origem comum. A fonte do dashboard será revista na fase do Power BI, porque o serviço tem a sua própria lista de fontes.
 
@@ -729,3 +729,97 @@ mostra os mesmos dados da visão, ordenáveis pelo nome ou pelo valor (`aria-sor
 região rolável que recebe foco, com cada nome levando à ficha. O espaço do painel lateral
 (série do Brasil e ranking das UFs) e da decomposição área × produtividade fica reservado
 para a parte B.
+
+## Produto web: página Explorar, parte B (fase 12)
+
+**Painel na mesma ilha do mapa, sem estado próprio.** O painel lateral (série do território
+em foco, número de destaque e ranking das UFs) é um componente da mesma ilha React do mapa:
+recebe a visão (série, medida, ano e UF) e duas funções que a alteram, pôr uma UF em foco e
+mudar o ano. A visão continua num único lugar, sincronizada com a URL, então escolher um
+estado no ranking (clique ou teclado) dá zoom no mapa e atualiza o link permanente sem
+duplicar a lógica dos filtros. Alternativa descartada: uma segunda ilha com um estado
+compartilhado entre as duas (uma biblioteca de store), que somaria JavaScript e uma segunda
+hidratação para o mesmo dado.
+
+**Agregados só dos níveis publicados.** O Brasil vem do `country_total` das matrizes que o
+mapa já baixou, sem download a mais; a UF em foco e o ranking vêm de
+`places/state/<UF>.json`. Nada é somado a partir dos municípios (regra 1 do contrato). O
+rendimento de um território é a soma da produção dividida pela soma da área colhida, com a
+mesma área mínima de 100 ha do mapa; a participação de uma UF é o valor dela sobre o do
+Brasil no mesmo ponto de `places/country.json`. A procedência ganhou as operações `share` e
+`areayield` para conferir esses números, e os formatos `compact` ("165,3 mi") e `brl`
+("R$ 315,2 bi") para o número de destaque e o ranking.
+
+**O ranking e o orçamento.** O ranking precisa do total de cada UF, e o pacote só o traz num
+arquivo por UF: 27 arquivos, 83 KB com gzip, contra uma folga de cerca de 16 KiB no
+orçamento do Explorar. O ranking da visão padrão (soja, produção, último ano) é calculado
+no build a partir desses arquivos e vem no HTML; as outras visões baixam os 27 arquivos uma
+vez, quando precisam deles e o painel está na tela (no celular, ao rolar até ele). É o mesmo
+que o mapa faz com as matrizes, que só chegam ao trocar o filtro. Alternativas descartadas:
+somar os municípios no navegador, que fere a regra 1 do contrato; baixar os 27 arquivos
+sempre, que levaria a página a cerca de 774 KiB, acima dos 700. A solução definitiva é
+publicar os totais por UF junto de cada matriz do Explorar (alguns KB por arquivo, sem
+pedido extra), no próximo ciclo de dados.
+
+**Decomposição renderizada no build.** "Mais terra ou mais produtividade?" usa a
+decomposição que o pacote publica (`analysis.json`, `growth_decomposition`, nível Brasil):
+como ln(produção) = ln(área) + ln(rendimento), as duas parcelas somam o crescimento todo. A
+figura é gerada no build (SVG com d3-scale), como as da Análise, e custa cerca de 4 KB de
+HTML, contra os 34 KB do `analysis.json` e o código do gráfico, se fosse baixada ao entrar
+na tela; também funciona sem JavaScript. Para não pesar na abertura, o navegador só a
+desenha quando ela se aproxima da tela (`content-visibility: auto`). Uma parcela pode ser
+negativa (a área do café beneficiado encolheu entre 2005 e 2015 enquanto a produção
+cresceu), por isso as barras divergem do zero: o que puxou o crescimento vai para a
+direita, o que encolheu vai para a esquerda, numa escala comum a todas as linhas, com
+traços em 0% e em 100% (o crescimento todo). Cada cultura mostra o período inteiro e os
+períodos internos que o pacote traz; o café começa em 2005, depois da quebra de 2002. Área e
+produtividade usam dois tons da rampa neutra, porque o marrom e o verde-azulado são da seca
+e da água. A tabela alternativa traz as produções e as áreas colhidas nas pontas e as duas
+parcelas de cada período.
+
+**Nota junto ao café.** No café, a área aparece com −96% e a produtividade com 196% entre
+2005 e 2015: o cálculo está certo, mas parece erro para quem não conhece o método. Uma frase
+logo abaixo das barras do café explica que a área colhida diminuiu, com as áreas das pontas
+do período inteiro citadas do `growth_decomposition` (regra dos números), e que por isso a
+produtividade respondeu por mais do que todo o crescimento. A frase só aparece enquanto os
+dados publicados a sustentam (produção em alta e área em queda no período inteiro), e o "em
+todos os períodos" só quando vale para cada um deles. O milho de 1995 a 2005 (área −42%) e a
+soja de 1975 a 1985 (produtividade −4%) têm o mesmo padrão, mais brando, e ficam explicados
+pela frase de leitura da figura ("À esquerda do zero, o fator que encolheu").
+
+**Ajustes da revisão visual.** Três ajustes pedidos na revisão da parte B:
+
+- **Numeração das figuras.** O mapa é a figura principal da página e virou a "Figura 1",
+  marcada na legenda do mapa, antes da fonte; a decomposição passou a "Figura 2"
+  (`#figura-2`). Dentro da ilha React, a marca vem de `StructuralMark.tsx`, que usa a mesma
+  função (`structuralText`) do componente Astro, e o verificador da regra dos números confere
+  a ordem das duas. A tabela do mapa continua sem número: ela só existe quando aberta, e um
+  número que dependesse disso mudaria a numeração da tabela da decomposição.
+- **Número de destaque do painel em Plex Sans Bold**, como o 73% da Análise; a série, o
+  ranking, os eixos, os rótulos e a unidade continuam na Mono. O arquivo Latin1 da Sans Bold
+  tem 21 KB, três vezes a folga que restava no Explorar. A solução foi um recorte da mesma
+  fonte só com os caracteres que os formatos do número de destaque imprimem (algarismos,
+  separadores, sinal de menos, "mil", "mi", "bi" e "R$"), com kerning e sem hinting (o número
+  é grande): 2.940 bytes em WOFF. Ele é gerado por `scripts/make_web_tokens.py` a partir do
+  TTF da identidade, com teste de drift, e entra no CSS como `--font-display-number-subset`.
+  A licença OFL trata um recorte como versão modificada e "Plex" é nome reservado, por isso o
+  recorte se chama "Atlas Display Number" e mantém os avisos de copyright, marca e licença; um
+  teste confere isso. Outro teste, no Vitest, garante que os formatos `int`, `compact` e `brl`
+  nunca imprimem um caractere fora do recorte, porque um caractere de fora faria o navegador
+  baixar o arquivo inteiro. Alternativas descartadas: o arquivo inteiro, que estoura o
+  orçamento; o negrito sintetizado pelo navegador a partir da Regular, que não é a Plex Sans
+  Bold; e o WOFF2, que economizaria algumas centenas de bytes, mas exigiria o `brotli` como
+  dependência nova (o WOFF usa o zlib da biblioteca padrão).
+- **Rótulos das barras.** Cada rótulo fica logo abaixo da própria barra e começa onde ela
+  começa (`margin-left` em % da coluna das barras, na mesma escala delas). No celular, a
+  coluna dos períodos encolhe para dar espaço às barras; se um rótulo ainda não couber (só a
+  soja de 1975 a 1985, a 360 px), ele quebra entre as duas partes, nunca dentro de uma. As
+  posições passaram a ter duas casas decimais, o que compensou os bytes das marcações novas.
+
+**Medições.** No Lighthouse, o Explorar ficou com 712.856 bytes transferidos de 716.800
+(696 de 700 KiB) e 92 KiB de JavaScript de 160: a parte B somou cerca de 5,0 KB de HTML (o
+ranking da visão padrão, a decomposição e a nota do café), 2,7 KB de JavaScript e 3,2 KB do
+recorte da fonte. Sobram cerca de 3,9 KiB, e nada novo entra no Explorar até o ciclo de
+dados com os totais por UF. Desempenho de 1,00 no computador; no celular, de 0,98 a 0,99 com
+a máquina livre e de 0,96 a 0,97 com ela carregada (`benchmarkIndex` de cerca de 1.600, em
+vez de 2.200).

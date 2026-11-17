@@ -11,6 +11,8 @@ export interface ExploreFile {
   unit_pt: string;
   years: number[];
   values: (number | null)[][];
+  /** Brazil's total in each year, published with the matrix (a territorial level). */
+  country_total: (number | null)[];
 }
 
 export interface Municipalities {

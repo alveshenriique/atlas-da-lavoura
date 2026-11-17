@@ -1,0 +1,268 @@
+---
+// "Mais terra ou mais produtividade?": where the growth of production came from, in Brazil,
+// for each crop, from the decomposition the data package publishes (analysis.json,
+// growth_decomposition): ln(production growth) = ln(area growth) + ln(yield growth), so the
+// two shares add up to the whole growth. A share can be negative (the area of coffee shrank
+// while production grew), so the bars diverge from zero: what pushed growth up goes right,
+// what held it back goes left. Each crop shows its whole period and the periods inside it;
+// coffee starts in 2005, after the 2002 unit break. It is Figura 2 of the page (the map is
+// Figura 1). Rendered at build time (SVG with
+// d3-scale), so the page downloads nothing for it and it works without JavaScript; the
+// browser renders it only when it nears the screen (content-visibility).
+import { scaleLinear } from "d3-scale";
+
+import { dataBasePath, loadDataFile } from "../../lib/data";
+import { format } from "../../lib/format";
+import { sourced, tick } from "../../lib/sourced";
+import { bindShortWords } from "../../lib/typography";
+import Num from "../Num.astro";
+import Structural from "../Structural.astro";
+
+type Column = (string | number | boolean | null)[];
+const block = loadDataFile<{ growth_decomposition: Record<string, Column> }>("analysis.json")
+  .growth_decomposition;
+const TABLE = "analysis.json#/growth_decomposition";
+const COLUMNS = [
+  "start_anchor|year",
+  "end_anchor|year",
+  "start_production_t|int",
+  "end_production_t|int",
+  "start_harvested_area_ha|int",
+  "end_harvested_area_ha|int",
+  "area_share_of_growth|pct",
+  "yield_share_of_growth|pct",
+].join(",");
+
+const CROPS = [
+  { id: "soybean", name: "Soja" },
+  { id: "corn", name: "Milho" },
+  { id: "coffee_processed", name: "Café beneficiado" },
+];
+const at = (column: string, row: number) => block[column]?.[row];
+const num = (column: string, row: number) => Number(at(column, row));
+const rowsOf = (crop: string) =>
+  (block.series ?? [])
+    .map((series, row) => ({ series, row }))
+    .filter(({ series, row }) => series === crop && at("territory_level", row) === "country")
+    .map(({ row }) => row)
+    .sort((a, b) => {
+      // The whole period first (the widest), then the periods inside it, in order.
+      const span = (r: number) => num("end_anchor", r) - num("start_anchor", r);
+      return span(b) - span(a) || num("start_anchor", a) - num("start_anchor", b);
+    });
+const groups = CROPS.map((crop) => ({ ...crop, rows: rowsOf(crop.id) })).filter((g) => g.rows.length > 0);
+const allRows = groups.flatMap((g) => g.rows);
+if (allRows.length === 0) throw new Error("no national growth decomposition in analysis.json");
+
+// One scale for every bar: from the most negative share to the largest positive stack.
+const lows = allRows.map((r) => Math.min(0, num("area_share_of_growth", r), num("yield_share_of_growth", r)));
+const highs = allRows.map((r) => Math.max(1, num("area_share_of_growth", r), num("yield_share_of_growth", r)));
+const x = scaleLinear()
+  .domain([Math.min(...lows), Math.max(...highs)])
+  .range([0, 100]);
+
+/** The two segments of a row on the shared scale, in % of the bar's width. */
+const segments = (row: number) => {
+  const a = num("area_share_of_growth", row);
+  const y = num("yield_share_of_growth", row);
+  // Positive parts stack to the right of zero, area first; a negative part goes left.
+  const area = a >= 0 ? [0, a] : [a, 0];
+  const yieldPart = y >= 0 ? (a >= 0 ? [a, a + y] : [0, y]) : [y, 0];
+  // Positions in % of the bar's width, to two decimals (finer than a pixel at any width).
+  const round = (v: number) => Math.round(v * 100) / 100;
+  const box = ([from, to]: number[]) => ({
+    left: round(x(from ?? 0)),
+    width: round(x(to ?? 0) - x(from ?? 0)),
+  });
+  const boxes = { area: box(area), yield: box(yieldPart) };
+  // Where the drawn bar starts: its label starts there too, right under it.
+  return { ...boxes, start: Math.min(boxes.area.left, boxes.yield.left) };
+};
+
+const share = (row: number, column: string) =>
+  sourced("analysis.json", `/growth_decomposition/${column}/${row}`, "pct");
+const year = (row: number, column: string) =>
+  sourced("analysis.json", `/growth_decomposition/${column}/${row}`, "year");
+const zeroTick = tick("analysis.json", "/growth_decomposition/area_share_of_growth", "pct", "within", 0);
+const wholeTick = tick("analysis.json", "/growth_decomposition/yield_share_of_growth", "pct", "within", 1);
+
+// The lead: the whole period of soybean and corn, and coffee's.
+const whole = (crop: string) => groups.find((g) => g.id === crop)?.rows[0];
+const soy = whole("soybean");
+const corn = whole("corn");
+const coffee = whole("coffee_processed");
+const breakYear = sourced("catalog.json", "/parameters/coffee_unit_break_year", "year");
+
+// Coffee's shares look wrong to whoever does not know the method (area −96%, yield +196%):
+// production grew while the harvested area shrank, so the area's share is negative and the
+// yield's is more than the whole growth. A note next to its bars says so, with the area at
+// both ends of the whole period, and only while the published numbers say it.
+const shrank = (r: number) =>
+  num("ln_production_growth", r) > 0 && num("end_harvested_area_ha", r) < num("start_harvested_area_ha", r);
+const coffeeRows = groups.find((g) => g.id === "coffee_processed")?.rows ?? [];
+const coffeeNote =
+  coffee !== undefined && shrank(coffee)
+    ? {
+        everyPeriod: coffeeRows.every(shrank),
+        from: sourced("analysis.json", `/growth_decomposition/start_harvested_area_ha/${coffee}`, "int"),
+        to: sourced("analysis.json", `/growth_decomposition/end_harvested_area_ha/${coffee}`, "int"),
+      }
+    : null;
+---
+
+<section class="growth" aria-labelledby="crescimento-titulo">
+  <div class="growth__text">
+    <h2 id="crescimento-titulo" class="growth__heading">
+      {bindShortWords("Mais terra ou mais produtividade?")}
+    </h2>
+    {
+      soy !== undefined && corn !== undefined && (
+        <p class="growth__lead">
+          De <Num n={year(soy, "start_anchor")} /> a <Num n={year(soy, "end_anchor")} />, a
+          expansão da área explica <Num n={share(soy, "area_share_of_growth")} /> do crescimento
+          da produção de soja. No milho, o ganho de produtividade explica{" "}
+          <Num n={share(corn, "yield_share_of_growth")} />.
+          {coffee !== undefined && num("area_share_of_growth", coffee) < 0 ? (
+            <>
+              {" "}No café beneficiado, de <Num n={year(coffee, "start_anchor")} /> a{" "}
+              <Num n={year(coffee, "end_anchor")} />, a área encolheu, e todo o crescimento veio
+              da produtividade.
+            </>
+          ) : null}
+        </p>
+      )
+    }
+  </div>
+
+  <figure id="figura-2" class="growth__figure" aria-labelledby="figura-2-titulo">
+    <div class="growth__head">
+      <h3 id="figura-2-titulo" class="growth__title">
+        <Structural kind="figure" n={2} />. Origem do crescimento da produção, Brasil
+      </h3>
+      <ul class="legend small" aria-label="Legenda da figura">
+        <li><span class="legend__swatch growth__swatch--area" aria-hidden="true"></span>área</li>
+        <li>
+          <span class="legend__swatch growth__swatch--yield" aria-hidden="true"></span>produtividade
+        </li>
+      </ul>
+    </div>
+    <p class="growth__reading small">
+      Quanto do crescimento veio de cada fator. À esquerda do zero, o fator que encolheu.
+    </p>
+
+    <div class="growth__chart">
+      <div class="growth__axis" aria-hidden="true">
+        <span class="growth__tick" style={`left: ${x(0)}%`}>
+          <span class="num" data-src={zeroTick.src} data-value={zeroTick.carried}>{zeroTick.text}</span>
+        </span>
+        <span class="growth__tick" style={`left: ${x(1)}%`}>
+          <span class="num" data-src={wholeTick.src} data-value={wholeTick.carried}>{wholeTick.text}</span>
+        </span>
+      </div>
+      {
+        groups.map((group) => (
+          <div class="growth__group">
+            <h4 class="growth__crop">{group.name}</h4>
+            <ul class="growth__rows">
+              {group.rows.map((row, k) => {
+                const s = segments(row);
+                return (
+                  <li class:list={["growth__row", { "growth__row--part": k > 0 }]}>
+                    <span class="growth__period meta">
+                      <Num n={year(row, "start_anchor")} />–<Num n={year(row, "end_anchor")} />
+                    </span>
+                    <span class="growth__bar" aria-hidden="true">
+                      <span class="growth__zero" style={`left: ${x(0)}%`} />
+                      <span class="growth__whole" style={`left: ${x(1)}%`} />
+                      <span
+                        class="growth__segment growth__segment--area"
+                        style={`left: ${s.area.left}%; width: ${s.area.width}%`}
+                      />
+                      <span
+                        class="growth__segment growth__segment--yield"
+                        style={`left: ${s.yield.left}%; width: ${s.yield.width}%`}
+                      />
+                    </span>
+                    <span class="growth__values small" style={`margin-left: ${s.start}%`}>
+                      <span class="growth__part">
+                        área <Num n={share(row, "area_share_of_growth")} />
+                      </span>{" "}
+                      ·{" "}
+                      <span class="growth__part">
+                        produtividade <Num n={share(row, "yield_share_of_growth")} />
+                      </span>
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+            {group.id === "coffee_processed" && coffeeNote !== null && coffee !== undefined && (
+              <p class="growth__note small">
+                A área colhida de café diminuiu{coffeeNote.everyPeriod ? " em todos os períodos" : ""}, de{" "}
+                <Num n={coffeeNote.from} /> hectares em <Num n={year(coffee, "start_anchor")} /> para{" "}
+                <Num n={coffeeNote.to} /> em <Num n={year(coffee, "end_anchor")} />; por isso a
+                produtividade respondeu por mais do que todo o crescimento.
+              </p>
+            )}
+          </div>
+        ))
+      }
+    </div>
+
+    <figcaption class="growth__caption small">
+      <p>
+        <a href="/metodo/#fontes">Fonte</a>: IBGE, Produção Agrícola Municipal; decomposição
+        logarítmica do projeto. Cada ponta de período é a média de três anos. O café começa
+        depois da mudança de unidade de <Num n={breakYear} />.
+      </p>
+      <ul class="figure__links" aria-label="Links da figura">
+        <li><a href={`${dataBasePath}/analysis.json`} type="application/json">Dados</a></li>
+        <li><a href="/metodo/">Método</a></li>
+        <li><a href="#figura-2">Link</a></li>
+      </ul>
+    </figcaption>
+
+    <details class="growth__data">
+      <summary class="small">Ver os dados da figura em tabela</summary>
+      <div class="table-scroll" tabindex="0" role="region" aria-label="Dados da figura em tabela">
+        <table data-src-table={TABLE} data-src-cols={COLUMNS}>
+          <caption class="small">
+            <Structural kind="table" n={1} /> · Origem do crescimento da produção, Brasil
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Cultura</th>
+              <th scope="col">Período</th>
+              <th scope="col">Produção no início (t)</th>
+              <th scope="col">Produção no fim (t)</th>
+              <th scope="col">Área colhida no início (ha)</th>
+              <th scope="col">Área colhida no fim (ha)</th>
+              <th scope="col">Parte da área</th>
+              <th scope="col">Parte da produtividade</th>
+            </tr>
+          </thead>
+          <tbody>
+            {
+              groups.flatMap((group) =>
+                group.rows.map((row) => (
+                  <tr data-row={row}>
+                    <th scope="row">{group.name}</th>
+                    <td class="num">
+                      {format(at("start_anchor", row), "year")}–{format(at("end_anchor", row), "year")}
+                    </td>
+                    <td class="num">{format(at("start_production_t", row), "int")}</td>
+                    <td class="num">{format(at("end_production_t", row), "int")}</td>
+                    <td class="num">{format(at("start_harvested_area_ha", row), "int")}</td>
+                    <td class="num">{format(at("end_harvested_area_ha", row), "int")}</td>
+                    <td class="num">{format(at("area_share_of_growth", row), "pct")}</td>
+                    <td class="num">{format(at("yield_share_of_growth", row), "pct")}</td>
+                  </tr>
+                )),
+              )
+            }
+          </tbody>
+        </table>
+      </div>
+    </details>
+  </figure>
+</section>

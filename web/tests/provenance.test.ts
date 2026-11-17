@@ -8,6 +8,7 @@ import {
   resolveRef,
   rowRefs,
   serializeRef,
+  siblingFile,
 } from "../src/lib/provenance";
 
 const doc = {
@@ -85,3 +86,27 @@ describe("number tokens", () => {
     expect(numberTokens("BR-DWGD, sem números")).toEqual([]);
   });
 });
+
+describe("territory operations", () => {
+  const country = { series: { soybean: { production_t: [100, 200], harvested_area_ha: [50, 80] } } };
+  const state = { series: { soybean: { production_t: [30, 50], harvested_area_ha: [10, 0] } } };
+
+  it("share a state's value of Brazil's at the same place", () => {
+    const ref = parseRef("places/state/MT.json#/series/soybean/production_t/1!share|pct");
+    expect(siblingFile(ref)).toBe("places/country.json");
+    expect(resolveRef(ref, state, null, country)).toBe(0.25);
+    expect(renderRef(ref, state, null, country)).toBe("25%");
+  });
+
+  it("take a territory's yield as its production over its harvested area", () => {
+    const ref = parseRef("places/country.json#/series/soybean/production_t/1!areayield|int");
+    expect(resolveRef(ref, country)).toBe(2500);
+    expect(() =>
+      resolveRef(parseRef("places/state/MT.json#/series/soybean/production_t/1!areayield|int"), state),
+    ).toThrow(/no yield/);
+    expect(() =>
+      resolveRef(parseRef("places/country.json#/series/soybean/harvested_area_ha/1!areayield|int"), country),
+    ).toThrow(/production/);
+  });
+});
+

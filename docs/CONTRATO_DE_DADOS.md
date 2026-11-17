@@ -88,12 +88,12 @@ Os tamanhos com gzip abaixo são os da versão 2026.11.08, com os dados completo
 |---|---|---|---|---|
 | `catalog.json` | catalog | todas | na abertura | 2 KiB |
 | `municipalities.json` | municipalities | Município; Explorar (nomes) | na abertura; no Explorar, na primeira interação com o mapa ou a tabela | 61 KiB |
-| `analysis.json` | analysis | Análise | na abertura | 33 KiB |
+| `analysis.json` | analysis | Análise; Explorar (decomposição, no build) | na abertura; no Explorar, só no build | 33 KiB |
 | `method.json` | method | Método | na abertura | 8 KiB |
 | `explore/<série>/<medida>.json` (24) | explore | Explorar | a soja na abertura; as demais ao trocar o filtro | 10 a 434 KiB (soja 189, milho 434) |
 | `places/country.json` | place | Explorar, Município | na abertura | 4 KiB |
 | `places/macro_region/<id>.json` (5) | place | — | sob demanda | 4 KiB |
-| `places/state/<UF>.json` (27) | place | Município | ao escolher o município | 3 a 5 KiB |
+| `places/state/<UF>.json` (27) | place | Município; Explorar (painel) | ao escolher o município; no Explorar, ao pôr a UF em foco, e os 27 quando o ranking de uma visão que não a padrão está na tela (o da visão padrão vem no HTML) | 3 a 5 KiB |
 | `places/region/<id>.json` (510) | place | Município | ao escolher o município | mediana 10 KiB, máximo 52 KiB |
 | `geo/municipalities.topo.json` | topology | Explorar | na abertura | 290 KiB |
 | `geo/states.topo.json` | topology | Análise; Explorar (contorno inicial) | ao chegar à seção da fronteira; no Explorar, no build (o contorno vai no HTML) | 13 KiB |

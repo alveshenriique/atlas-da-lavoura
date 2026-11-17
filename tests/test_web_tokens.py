@@ -3,6 +3,8 @@
 import importlib.util
 from pathlib import Path
 
+from fontTools.ttLib import TTFont
+
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "make_web_tokens.py"
 
@@ -73,3 +75,32 @@ def test_tokens_cover_every_identity_colour():
             assert colour[theme] in css
         for step in vi.SEQUENTIAL[theme]:
             assert step in css
+
+
+def test_display_number_subset_matches_identity():
+    generator = load_generator()
+    path = generator.FONTS_DIR / generator.DISPLAY_SUBSET_FILE
+    assert path.read_bytes() == generator.render_display_subset(), (
+        f"web/public/fonts/{generator.DISPLAY_SUBSET_FILE} drifted;"
+        " run `uv run python scripts/make_web_tokens.py`"
+    )
+
+
+def test_display_number_subset_is_renamed_and_holds_only_its_characters():
+    generator = load_generator()
+    font = TTFont(generator.FONTS_DIR / generator.DISPLAY_SUBSET_FILE)
+    assert font.flavor == "woff"
+    cmap = set(font.getBestCmap())
+    assert cmap == {ord(c) for c in generator.DISPLAY_SUBSET_TEXT}
+    names = font["name"]
+    # "Plex" is a Reserved Font Name: a Modified Version may not carry it as its name...
+    for name_id in (1, 3, 4, 6, 16, 17):
+        assert "Plex" not in (names.getDebugName(name_id) or ""), name_id
+    assert names.getDebugName(1) == generator.DISPLAY_SUBSET_FAMILY
+    # ...but keeps the copyright and the licence.
+    source = TTFont(generator.display_subset_source())
+    for name_id in (0, 13, 14):
+        assert names.getDebugName(name_id) == source["name"].getDebugName(name_id)
+    css = generator.render_fonts_css()
+    assert f'url("/fonts/{generator.DISPLAY_SUBSET_FILE}") format("woff")' in css
+    assert generator.unicode_range("0123 ab") == "U+0020, U+0030-0033, U+0061-0062"
