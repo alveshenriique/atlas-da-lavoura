@@ -5,6 +5,13 @@ name: site
 # the data pointer or this workflow changed (detected by the `changes` job). Mark ONLY
 # `site-status` as a required check: it passes when `site` passed or was skipped by the
 # path filter, and fails when `site` failed.
+#
+# Publication (Cloudflare Workers, static assets): on a push to main, `deploy` publishes the
+# very build the `site` job tested, and `verify` checks the live site (verify-site.yml). On
+# a pull request from this repository, `preview` uploads the same build as a preview version
+# (pr-<number>-atlas-da-lavoura.<account>.workers.dev) without touching production; it is
+# skipped, not failed, for Dependabot and forks (no access to the token), and is not a
+# required check. The token lives in the `production` and `preview` environments.
 
 on:
   push:
@@ -112,6 +119,31 @@ jobs:
         timeout-minutes: 6
         run: npm run lhci:mobile
 
+      # The tested build, for the deploy or the preview: one compressed file uploads much
+      # faster than six thousand small ones.
+      - name: Package the tested build
+        if: >-
+          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+          (github.event_name == 'pull_request' &&
+           github.event.pull_request.head.repo.full_name == github.repository &&
+           github.event.pull_request.user.login != 'dependabot[bot]')
+        run: tar -czf ../site-dist.tgz dist
+
+      - name: Keep the tested build for the next job
+        if: >-
+          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+          (github.event_name == 'pull_request' &&
+           github.event.pull_request.head.repo.full_name == github.repository &&
+           github.event.pull_request.user.login != 'dependabot[bot]')
+        timeout-minutes: 3
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: site-dist
+          path: site-dist.tgz
+          retention-days: 3
+          compression-level: 0
+          if-no-files-found: error
+
   site-status:
     # The aggregator that branch protection requires: always reports, passes on success
     # or on a path-filter skip, fails when the site job failed or was cancelled.
@@ -130,3 +162,126 @@ jobs:
             success|skipped) exit 0 ;;
             *) exit 1 ;;
           esac
+
+  deploy:
+    name: Deploy to Cloudflare
+    needs: site
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: production
+      url: https://atlasdalavoura.com.br
+    # One deploy at a time, never cancelled halfway.
+    concurrency:
+      group: production
+      cancel-in-progress: false
+    env:
+      SEGMENT_DOWNLOAD_TIMEOUT_MINS: 2
+      WRANGLER_SEND_METRICS: "false"
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies (wrangler, pinned in the lockfile)
+        timeout-minutes: 5
+        run: npm ci
+
+      - name: Fetch the tested build
+        timeout-minutes: 3
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: site-dist
+
+      - name: Unpack the tested build
+        run: tar -xzf ../site-dist.tgz
+
+      - name: Deploy (wrangler deploy)
+        timeout-minutes: 5
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          COMMIT: ${{ github.sha }}
+        run: npx wrangler deploy --message "main ${COMMIT}"
+
+  verify:
+    name: Verify the published site
+    needs: deploy
+    uses: ./.github/workflows/verify-site.yml
+
+  preview:
+    name: Preview version (Cloudflare)
+    needs: site
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: preview
+      url: ${{ steps.upload.outputs.url }}
+    concurrency:
+      group: preview-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    env:
+      SEGMENT_DOWNLOAD_TIMEOUT_MINS: 2
+      WRANGLER_SEND_METRICS: "false"
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies (wrangler, pinned in the lockfile)
+        timeout-minutes: 5
+        run: npm ci
+
+      - name: Fetch the tested build
+        timeout-minutes: 3
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: site-dist
+
+      - name: Unpack the tested build
+        run: tar -xzf ../site-dist.tgz
+
+      # A new version with the alias pr-<number>; production keeps serving its own version.
+      - name: Upload the preview version (wrangler versions upload)
+        id: upload
+        timeout-minutes: 5
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          PR: ${{ github.event.pull_request.number }}
+          COMMIT: ${{ github.event.pull_request.head.sha }}
+        run: |
+          npx wrangler versions upload --preview-alias "pr-${PR}" --message "PR #${PR} ${COMMIT}" | tee ../upload.log
+          url=$(grep -oE "https://pr-${PR}-[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev" ../upload.log | head -n 1)
+          test -n "$url"
+          echo "url=${url}/" >> "$GITHUB_OUTPUT"
+
+      - name: Check that the preview answers and stays out of search engines
+        timeout-minutes: 2
+        env:
+          URL: ${{ steps.upload.outputs.url }}
+        run: |
+          headers=$(curl -sSI --retry 5 --retry-delay 5 --retry-all-errors "$URL")
+          echo "$headers"
+          echo "$headers" | grep -qiE "^HTTP/[0-9.]+ 200"
+          echo "$headers" | grep -qiE "^x-robots-tag: noindex"
+          printf '### Prévia\n\n%s\n' "$URL" >> "$GITHUB_STEP_SUMMARY"
