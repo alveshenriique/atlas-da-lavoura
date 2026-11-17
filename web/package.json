@@ -18,7 +18,7 @@
     "lhci:mobile": "lhci autorun --config=lighthouserc.mobile.json"
   },
   "dependencies": {
-    "@astrojs/react": "7.1.4",
+    "@astrojs/react": "7.1.9",
     "astro": "^7.4.12",
     "d3-array": "^3.2.5",
     "d3-delaunay": "^6.0.6",
