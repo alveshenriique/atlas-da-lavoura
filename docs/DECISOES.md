@@ -823,3 +823,112 @@ recorte da fonte. Sobram cerca de 3,9 KiB, e nada novo entra no Explorar até o 
 dados com os totais por UF. Desempenho de 1,00 no computador; no celular, de 0,98 a 0,99 com
 a máquina livre e de 0,96 a 0,97 com ela carregada (`benchmarkIndex` de cerca de 1.600, em
 vez de 2.200).
+
+## Publicação do site (fase 12)
+
+**Content-Security-Policy: scripts sem `unsafe-inline`, e a concessão do
+`style-src-attr 'unsafe-inline'`.** A política vai num cabeçalho HTTP, gerado no build a
+partir do próprio HTML publicado, e vale para todas as páginas. Os scripts continuam
+bloqueados sem `unsafe-inline`: `script-src` aceita só os arquivos do próprio site
+(`'self'`) e o hash sha256 de cada script embutido que o build produz (6 no build atual, na
+Análise e no Explorar). Não há `unsafe-inline` nem `unsafe-eval` para scripts, e, sem
+`script-src-attr`, atributos de evento como `onclick` também são recusados. Um `<script>` ou
+um atributo de evento injetado na página não roda. Os elementos de estilo seguem a mesma
+regra: `style-src-elem` aceita as folhas de estilo do site e o hash do único bloco `<style>`
+embutido.
+
+A exceção são os atributos `style`: `style-src-attr 'unsafe-inline'`. O motivo é que os
+gráficos posicionam barras, rótulos e marcas com atributos `style` gerados no build e pelo
+React (696 atributos na Análise e no Explorar, com posições e larguras em porcentagem que
+mudam a cada pacote de dados). A alternativa dentro do CSP seria `'unsafe-hashes'` com um
+hash por valor distinto: centenas de hashes, acima do limite de 2.000 caracteres por linha
+do arquivo de cabeçalhos da Cloudflare, e mudando a cada atualização dos dados. Um nonce não
+serve a um site estático, porque exige um servidor que gere um valor novo a cada resposta.
+Reescrever os gráficos para posicionar tudo com atributos de SVG, que o CSP não restringe, é
+possível, mas é uma reforma à parte, registrada aqui como evolução futura.
+
+O risco aceito é o de injeção de CSS por atributo: quem conseguisse injetar HTML na página
+poderia mudar a aparência de elementos (esconder, sobrepor ou deslocar conteúdo). Ele é
+limitado por três fatos. Primeiro, não há vetor conhecido de injeção: o site não tem
+entrada de usuário refletida no HTML, nem conteúdo de terceiros, e todos os textos vêm do
+build e do pacote de dados próprio. Segundo, um atributo `style` não executa código nem lê
+dados da página (a exfiltração por seletores de CSS exigiria um bloco `<style>`, que continua
+bloqueado). Terceiro, `img-src`, `font-src` e `connect-src` só aceitam o próprio site, então
+um `url(...)` num atributo não consegue levar dados para outro servidor. Para navegadores
+antigos, sem suporte às diretivas `-elem` e `-attr` (Safari antes do 15.4 e Firefox antes do
+108), `style-src` traz `'self' 'unsafe-inline'` como alternativa; os navegadores atuais usam
+as diretivas mais específicas e ignoram essa linha.
+
+**Hospedagem e deploy.** O site é um Worker da Cloudflare só com arquivos estáticos, sem
+código próprio (`web/wrangler.jsonc`): cada resposta é um arquivo de `dist/` com os
+cabeçalhos de `dist/_headers`, e as requisições a arquivos estáticos são gratuitas e sem
+limite no plano Free (o limite de 20.000 arquivos por versão está longe: são 6.189). O deploy
+é um job do `site.yml` que roda em push na `main`, depois do job `site`, e publica o
+artefato que esse job acabou de construir e testar (os mesmos bytes, não um build novo). O CI
+de Python e dbt não entra na dependência: a regra da `main` já exige os três checks verdes no
+PR, e esperar outro workflow com `workflow_run` complicaria sem ganho. Um deploy por vez
+(`concurrency` sem cancelamento), o `wrangler` fixado na versão exata do lockfile e sem
+telemetria. Desfazer é `wrangler rollback` ou o botão de rollback do painel, em segundos.
+Alternativas descartadas: Cloudflare Pages, que a Cloudflare passou a direcionar para os
+Workers com static assets; e o build na própria Cloudflare, que publicaria um build diferente
+do que os testes viram.
+
+**Prévias por PR.** Cada PR deste repositório ganha uma versão de prévia
+(`wrangler versions upload --preview-alias pr-<número>`), em
+`pr-<número>-atlas-da-lavoura.<conta>.workers.dev`, sem tocar na versão de produção. O job
+roda no evento `pull_request`, e não `pull_request_target`, que daria o token a código vindo
+de forks; nos PRs do Dependabot e de forks, que não recebem o token, ele é pulado pela
+condição do job, e não falha. Não é check obrigatório. As prévias são públicas, mas levam
+`X-Robots-Tag: noindex` por uma regra do `_headers` que vale só para os hosts do
+`workers.dev`, conferida pelo próprio job depois do upload.
+
+**Credenciais.** Um token de API da Cloudflare com o mínimo: editar Workers na conta e
+editar as rotas de Workers só na zona atlasdalavoura.com.br (o domínio é declarado no
+`wrangler.jsonc`, revisado em PR como o resto). Ele fica em dois ambientes do GitHub:
+`production`, liberado só para a `main`, e `preview`; o ID da conta, que não é segredo, é uma
+variável do repositório. Se o token vazar, basta revogá-lo no painel da Cloudflare e trocar
+o segredo.
+
+**Cache.** Os arquivos com nome que muda quando o conteúdo muda (`/_astro/*`, com hash, e
+`/data/<versão>/*`, de versão imutável e conferida por sha256) ficam em cache por um ano,
+`immutable`. As fontes, sem hash no nome, por 30 dias. O HTML é sempre revalidado
+(`max-age=0, must-revalidate`, com ETag, uma ida e volta de poucos bytes): um HTML antigo
+guardado por alguns minutos poderia pedir, depois de um deploy, pacotes e dados que a versão
+nova já não tem, e a página quebraria.
+
+**Testes contra o mesmo motor da produção.** `npm run e2e` serve o build com `wrangler
+dev`, que aplica o `_headers` como a Cloudflare (inclusive na 404 e no redirecionamento da
+barra final). Toda a suíte roda sob a CSP, e `e2e/test.ts` reprova qualquer teste em que o
+navegador acuse uma violação. Um teste negativo injeta um `<script>` e um `onclick` e confere
+que os dois são bloqueados. O teste da regra dos números que simulava um número em
+`::before` passou a injetar o estilo pelo CSSOM, porque a CSP agora recusa um `<style>`
+injetado, como deve.
+
+**404, robots, sitemap e prévia de links.** A 404 é uma página do site, servida com status
+404 para qualquer endereço inexistente (`not_found_handling`), com os caminhos principais e
+a busca de municípios. O `robots.txt` libera tudo e aponta o sitemap, que lista só as páginas
+prontas. Cada página tem canonical e as tags Open Graph e Twitter. A imagem de prévia (1200 ×
+630) é desenhada pelo próprio componente do gráfico da Análise, numa página interna que só
+existe quando `ATLAS_OG=1`, renderizada pelo Playwright (`npm run og-image`), que confere a
+procedência dos números antes de salvar o PNG; um teste falha quando a imagem é de uma versão
+de dados diferente da do ponteiro.
+
+**Páginas em construção.** `web/src/lib/site-pages.ts` registra o estado de cada página.
+As inacabadas (Municípios, as fichas e Método) mostram um aviso que diz o que falta e onde
+olhar enquanto isso, levam `noindex` e ficam fora do sitemap; quando uma página fica pronta,
+a mesma mudança troca o estado, retira o aviso e a coloca no sitemap.
+
+**Verificação depois do deploy.** `verify-site.yml` roda depois de cada deploy e sob
+demanda: http e www redirecionam para https://atlasdalavoura.com.br mantendo caminho e query,
+os certificados valem por mais 14 dias, as páginas, o robots, o sitemap e a imagem respondem,
+a 404 responde 404, cada página traz os cabeçalhos de segurança e de cache, e cada script
+embutido do HTML que a Cloudflare de fato entrega está na CSP. Essa última checagem pega um
+script injetado no caminho (ofuscação de e-mail, Rocket Loader, análise automática), que a CSP
+bloquearia e quebraria a página. Por fim, um navegador abre a Análise e o Explorar e exige zero
+violações e zero erros.
+
+**HSTS.** Começa com um dia (`max-age=86400; includeSubDomains`) e sobe para um ano depois
+de uma semana de verificações verdes. O `includeSubDomains` exige HTTPS em todo subdomínio, o
+que vale para o www (redirecionado pela Cloudflare) e para o dbt docs (GitHub Pages com HTTPS
+obrigatório). O preload fica para uma decisão separada, porque sair da lista dos navegadores
+leva meses.
