@@ -1,4 +1,5 @@
 import { format, MINUS } from "../src/lib/format";
+import { tokens } from "../src/lib/tokens";
 
 describe("format", () => {
   it("prints fractions as whole percentages", () => {
@@ -47,5 +48,17 @@ describe("format", () => {
     expect(format(1234567890, "compact")).toBe("1,2 bi");
     expect(format(315194933, "brl")).toBe("R$ 315,2 bi");
     expect(format(4329958, "brl")).toBe("R$ 4,3 bi");
+  });
+
+  it("prints display numbers only with the characters of the display-number font subset", () => {
+    // The panel's display number uses a subset of IBM Plex Sans Bold (fonts.css); a character
+    // outside it would fall back to the whole Bold file, beyond the Explorar's budget.
+    const allowed = new Set(tokens.displayNumber.subset.characters);
+    const samples = [0, 7, 999, 1234, 9999, 12_345, 999_960, 165_259_014, 1_234_567_890, 4.2e12, -5_432_100];
+    for (const name of ["int", "compact", "brl"] as const) {
+      for (const n of samples) {
+        for (const c of format(n, name)) expect(allowed.has(c), `${name}(${n}) prints "${c}"`).toBe(true);
+      }
+    }
   });
 });

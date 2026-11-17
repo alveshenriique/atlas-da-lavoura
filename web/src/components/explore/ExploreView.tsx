@@ -20,6 +20,8 @@ import {
   type Municipalities,
   rowsOf,
 } from "./data";
+import StructuralMark from "../StructuralMark";
+import ExplorePanel, { type DefaultRanking } from "./ExplorePanel";
 import { type Frame, MAP_PAD, MAP_WIDTH } from "./geometry";
 import { CODE, MapRenderer, type Palette, TINY_PX } from "./map-renderer";
 
@@ -51,6 +53,8 @@ export interface Props {
   frame: Frame;
   /** The outline of the states (an SVG made at build time), shown until the first frame. */
   children?: React.ReactNode;
+  /** The states ranked for the default view, worked out at build time from the state files. */
+  defaultRanking: DefaultRanking;
 }
 
 const STEP_MS = 900;
@@ -801,7 +805,7 @@ export default function ExploreView(props: Props) {
       </div>
 
       <div className="explore__body">
-        <section className="explore__map-column" aria-label="Mapa dos municípios">
+        <section id="figura-1" className="explore__map-column" aria-label="Mapa dos municípios">
           <div className="explore__toolbar">
             <label className="explore__focus">
               <span className="meta">Foco</span>
@@ -1040,8 +1044,8 @@ export default function ExploreView(props: Props) {
 
           <div className="explore__caption small">
             <p>
-              <a href="/metodo/#fontes">Fonte</a>: IBGE, Produção Agrícola Municipal. Municípios sem dado
-              aparecem hachurados, e não como zero.
+              <StructuralMark kind="figure" n={1} />. <a href="/metodo/#fontes">Fonte</a>: IBGE, Produção
+              Agrícola Municipal. Municípios sem dado aparecem hachurados, e não como zero.
             </p>
             <ul className="explore__links" aria-label="Links do mapa">
               <li>
@@ -1109,9 +1113,18 @@ export default function ExploreView(props: Props) {
           )}
         </section>
 
-        <aside className="explore__panel" aria-label="Painel do Brasil">
-          <p className="small">O painel com a série do Brasil e o ranking dos estados entra na próxima etapa.</p>
-        </aside>
+        <ExplorePanel
+          dataBase={dataBase}
+          view={view}
+          ufs={ufs}
+          files={files}
+          measureLabel={measureLabel}
+          unit={unit}
+          firstYear={option.firstYear}
+          defaultRanking={props.defaultRanking}
+          onFocus={(uf) => setView((v) => ({ ...v, uf }))}
+          onYear={(year) => setView((v) => ({ ...v, year }))}
+        />
       </div>
     </div>
   );

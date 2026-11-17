@@ -1,23 +1,26 @@
 ---
-// Explorar, part A: the map of the municipalities with its timeline and filters, after the
-// approved editorial draft. The island (components/explore/ExploreView.tsx) fetches the
+// Explorar: the map of the municipalities with its timeline and filters, the side panel and
+// the area × yield decomposition, after the approved editorial draft. The island (components/explore/ExploreView.tsx) fetches the
 // mesh and one matrix at a time; the build only works out what the island needs up front:
 // the series and their years, the states, the map's aspect ratio and the fixed scale of
 // every series and measure, which the legend cites and the provenance test recomputes from
 // the published files: proportional circles for the totals (lib/symbols.ts) and colour
-// classes for the yield (lib/classify.ts). The outline of the states goes into the HTML
-// itself, from geo/states.topo.json and in the frame of the municipal mesh, so it is on
-// screen with the first paint, before the script and the municipalities arrive. The side
-// panel (Brazil series, state ranking) and the area × yield decomposition come in part B;
-// their places are reserved.
+// classes for the yield (lib/classify.ts). The side panel's ranking of the states for the
+// default view is worked out here from the state files, so the page downloads them only for
+// another view, and the decomposition below the map is rendered here too. The outline of the
+// states goes into the HTML itself, from geo/states.topo.json and in the frame of the
+// municipal mesh, so it is on screen with the first paint, before the script and the
+// municipalities arrive.
 import "../styles/explore.css";
 
 import ExploreView, { type Scale, type SeriesOption } from "../components/explore/ExploreView";
+import GrowthDecomposition from "../components/explore/GrowthDecomposition.astro";
 import { decodeTopology, linesToPath, MAP_PAD } from "../components/explore/geometry";
 import Base from "../layouts/Base.astro";
 import { classBreaks, pooledPositives, yieldMatrix } from "../lib/classify";
 import { dataBasePath, loadCatalog, loadDataFile } from "../lib/data";
 import { MEASURES } from "../lib/explore-view";
+import { type PlaceFile, stateRanking } from "../lib/places";
 import { circleScale } from "../lib/symbols";
 import { format } from "../lib/format";
 import { sourced } from "../lib/sourced";
@@ -108,6 +111,23 @@ const viewBox = [-MAP_PAD, -MAP_PAD, outline.width + 2 * MAP_PAD, outline.height
 const soybean = series.find((option) => option.id === "soybean") ?? series[0];
 if (!soybean) throw new Error("the catalog has no series");
 const baseYear = sourced("catalog.json", "/parameters/deflation_base_year", "year");
+
+// The ranking of the states for the default view, from the state files of the package.
+const defaultMatrix = loadDataFile<ExploreFile & { country_total: (number | null)[] }>(
+  `explore/${soybean.id}/production_t.json`,
+);
+const defaultRanking = {
+  series: soybean.id,
+  measure: "production_t" as const,
+  year: soybean.lastYear,
+  rows: stateRanking(
+    ufs.map((u) => ({ ...u, place: loadDataFile<PlaceFile>(`places/state/${u.abbr}.json`) })),
+    defaultMatrix.country_total[defaultMatrix.years.indexOf(soybean.lastYear)] ?? null,
+    soybean.id,
+    "production_t",
+    soybean.lastYear,
+  ),
+};
 const municipalityCount = format(catalog.municipality_count, "int");
 ---
 
@@ -154,6 +174,7 @@ const municipalityCount = format(catalog.municipality_count, "int");
       aspect={aspect}
       baseYear={{ text: baseYear.text, src: baseYear.src }}
       frame={national.frame}
+      defaultRanking={defaultRanking}
     >
       <svg
         class="explore__outline-svg"
@@ -172,10 +193,6 @@ const municipalityCount = format(catalog.municipality_count, "int");
         pacote, indicados na página Método.
       </p>
     </noscript>
-    <section class="explore-reserved" aria-label="Área × produtividade">
-      <p class="small">
-        A decomposição do crescimento em área e produtividade entra na próxima etapa.
-      </p>
-    </section>
+    <GrowthDecomposition />
   </div>
 </Base>

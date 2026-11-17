@@ -52,7 +52,13 @@ export const tokens = {
   },
   "displayNumber": {
     "role": "text",
-    "weight": 700
+    "weight": 700,
+    "subset": {
+      "family": "Atlas Display Number",
+      "url": "/fonts/AtlasDisplayNumber-Bold.woff",
+      "characters": "0123456789,.  −R$bilm",
+      "unicodeRange": "U+0020, U+0024, U+002C, U+002E, U+0030-0039, U+0052, U+0062, U+0069, U+006C-006D, U+00A0, U+2212"
+    }
   },
   "typeScaleRem": {
     "title": "1.4167rem",
