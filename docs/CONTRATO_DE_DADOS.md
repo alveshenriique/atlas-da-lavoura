@@ -76,7 +76,7 @@ Todo arquivo começa com um bloco `meta`:
 8. **Atribuição.** O texto de citação de cada fonte (`attribution_pt`, em `catalog.sources`) aparece completo na página Método, numa lista com todas as fontes no mesmo formato. O rodapé de todas as páginas e as figuras citam as fontes na forma curta, por exemplo "BR-DWGD (Xavier et al., 2022)", com o ano lido da própria citação, e apontam para essa lista.
 9. **Números de dado só dos arquivos; números estruturais marcados.** O site distingue dois tipos de número:
    - **De dado:** todo valor que descreve os dados, inclusive no meio do texto, nos eixos e nos nomes acessíveis. Vem de um arquivo deste pacote e cita a sua origem na marcação (`data-src` com `arquivo#/ponteiro|formato`, ou a linha de uma tabela colunar).
-   - **Estrutural:** a numeração editorial de figuras, tabelas e notas e os marcadores das listas numeradas. Não vem dos dados e é marcada explicitamente com `data-structural`. Uma marca de figura, tabela ou nota contém só o texto "Figura N", "Tabela N" ou "Nota N", em que N é a sua posição na página entre as marcas do mesmo tipo, e não cita dados. Uma lista numerada é um `<ol data-structural="list">` que conta a partir de 1, sem `start`, `reversed` nem `value`.
+   - **Estrutural:** a numeração editorial de figuras, tabelas e notas e os marcadores das listas numeradas. Não vem dos dados e é marcada explicitamente com `data-structural`. Uma marca de figura, tabela ou nota contém só o texto "Figura N", "Tabela N" ou "Nota N", em que N é a sua posição na página entre as marcas do mesmo tipo, e não cita dados. Uma lista numerada é um `<ol data-structural="list">` que conta a partir de 1, sem `start` nem `reversed`; um item só pode ter `value` igual à sua própria posição (1, 2, 3…), o que uma lista reordenada no lugar precisa, porque o navegador nem sempre renumera os itens que mudam de posição.
 
    O teste de ponta a ponta do site relê os arquivos citados e falha se algum número de dado não tiver origem ou divergir dela. Também falha se uma marca estrutural fugir dessas regras, se uma lista numerada não estiver marcada ou se houver número em conteúdo gerado por CSS. Assim, um número de dado não passa disfarçado de estrutural (`web/src/lib/provenance.ts`, `web/src/lib/structural.ts`, `web/e2e/provenance.ts`).
 
@@ -87,7 +87,7 @@ Os tamanhos com gzip abaixo são os da versão 2026.11.08, com os dados completo
 | Caminho | Esquema | Página | Quando carrega | gzip |
 |---|---|---|---|---|
 | `catalog.json` | catalog | todas | na abertura | 2 KiB |
-| `municipalities.json` | municipalities | Município; Explorar (nomes) | na abertura; no Explorar, na primeira interação com o mapa ou a tabela | 61 KiB |
+| `municipalities.json` | municipalities | Município; Explorar (nomes e primeiro ano) | na abertura; no Explorar, na primeira interação com o mapa ou a tabela, ou num ano anterior ao último primeiro ano (os municípios criados depois aparecem como ainda não existentes) | 61 KiB |
 | `analysis.json` | analysis | Análise; Explorar (decomposição, no build) | na abertura; no Explorar, só no build | 33 KiB |
 | `method.json` | method | Método | na abertura | 8 KiB |
 | `explore/<série>/<medida>.json` (24) | explore | Explorar | a soja na abertura; as demais ao trocar o filtro | 10 a 434 KiB (soja 189, milho 434) |
@@ -110,7 +110,7 @@ Os tamanhos com gzip abaixo são os da versão 2026.11.08, com os dados completo
 - `null_means`, `municipality_count`, `warehouse` e `sample`.
 
 **`municipalities.json`.** Traz quatro tabelas colunares:
-- `municipalities`: código, nome, UF, região imediata e primeiro ano com dado na PAM (`null` nos 7 municípios sem dado);
+- `municipalities`: código, nome, UF, região imediata e primeiro ano com dado na PAM (`null` nos 7 municípios sem dado); antes do primeiro ano o município ainda não existia e não tem valor em nenhuma matriz, e o site o mostra assim, nunca como "sem dado";
 - `states`;
 - `immediate_regions`;
 - `macro_regions`.
