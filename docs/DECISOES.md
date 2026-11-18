@@ -9,6 +9,7 @@ Este documento registra as decisões técnicas do pipeline do Atlas da Lavoura, 
 - [Localidades como snapshot da malha atual](#localidades-como-snapshot-da-malha-atual)
 - [Carga da camada raw no Postgres](#carga-da-camada-raw-no-postgres)
 - [CI com amostra dos dados](#ci-com-amostra-dos-dados)
+- [Estratégia de testes](#estratégia-de-testes)
 - [Clima: BR-DWGD agregado por município](#clima-br-dwgd-agregado-por-município)
 - [SQL portável no dbt: um código para Postgres e BigQuery](#sql-portável-no-dbt-um-código-para-postgres-e-bigquery)
 - [Nested loop desligado no modelo de janelas climáticas](#nested-loop-desligado-no-modelo-de-janelas-climáticas)
@@ -52,6 +53,19 @@ As actions do workflow são fixadas pelo SHA do commit da release, com a versão
 Todo job dos três workflows (`ci.yml`, `docs.yml` e `site.yml`) tem `timeout-minutes`, porque o padrão do GitHub é 360 minutos e um passo travado só apareceria horas depois. O teto de cada job fica em cerca de três vezes a sua execução mais lenta recente, com mínimo de 5 minutos, e os passos que dependem de rede (`uv sync`, `npm ci`, `dbt deps`, os downloads e as actions do Pages) têm limites menores. A restauração dos caches desiste de um segmento travado em 2 minutos (`SEGMENT_DOWNLOAD_TIMEOUT_MINS`, em vez dos 10 do padrão) e segue sem cache. O deploy do Pages usa o timeout da própria action, de 6 minutos, abaixo do teto do job: assim a publicação é cancelada de forma limpa, em vez de o job ser morto no meio da consulta ao status.
 **CI com a amostra.** Com clima de 2023 a 2025 para 7 municípios, só as colheitas de 2024 e 2025 têm janelas completas; a de 2023 fica com cobertura parcial e indicadores nulos, o que exercita a regra de completude. A normal de 1991–2020 não existe na amostra, então os z-scores ficam nulos e `is_normal_available` é falso; a tendência de rendimento existe, porque a PAM da amostra é completa. Todos os testes são invariantes condicionados a essas flags, e os de eventos conhecidos passam vazios. Nenhum modelo ou teste fica fora do CI.
 Alternativas descartadas. Baixar os dados reais das APIs a cada execução do CI deixaria o build lento (cerca de 25 minutos só para a PAM) e dependente da disponibilidade do IBGE e do BCB. Criar dados sintéticos à mão testaria só os casos imaginados, enquanto a amostra real traz as esquisitices da fonte. Pular os testes que "precisam de dados completos" não foi necessário, porque nenhum precisa.
+
+## Estratégia de testes
+
+Um teste existe para pegar um erro que ninguém veria a tempo. O critério vale para o pipeline e para o site, e é o mesmo desde a primeira fase.
+
+O que vira teste:
+
+1. **Correção dos dados:** tudo que, se quebrar, mostra um número ou uma informação errada sem que ninguém perceba. Exemplos: somas que fecham, a quebra do café em 2002, "sem dado" nunca como zero, a procedência de cada número do site, o ranking na ordem dos valores.
+2. **Contratos entre partes do sistema:** o formato dos arquivos (JSON Schema), a versão do pacote e o sha256 do ponteiro, os cabeçalhos de segurança e de cache, e as cores e fontes que o site lê da identidade visual.
+3. **Limites de qualidade:** acessibilidade (axe, WCAG 2.x A e AA), desempenho (Lighthouse) e o orçamento de tamanho de cada página.
+4. **Regressão:** todo erro corrigido ganha um teste que falha se ele voltar.
+
+O que não vira teste: escolhas de design e de texto, e a posição exata dos elementos, a não ser quando a posição tem propósito de produto (o rótulo de uma barra junto da própria barra, o lado do zero de uma barra divergente). Isso é garantido por revisão visual, com prints antes e depois de cada mudança. Um teste de design congelaria escolhas que devem poder mudar e falharia por motivos que não são erros. Pelo mesmo motivo, a comparação de prints pixel a pixel foi descartada: ela quebra com qualquer mudança de fonte ou de suavização e não diz se a diferença é um erro.
 
 ## Clima: BR-DWGD agregado por município
 
@@ -600,9 +614,12 @@ rendimento de área colhida pequena tem o pontilhado; nos círculos, o zero é a
 círculo sobre o tom claro do mapa base. A rampa e os
 círculos usam os tons neutros da identidade, sem o marrom e o verde-azulado, que são da
 seca e da água. A linha de fonte diz "Municípios sem dado aparecem hachurados, e não como
-zero". O valor real da produção antes do primeiro ano deflacionado (1995 na soja e no
-milho) aparece hachurado, sem círculos, com "não disponível" na legenda e a nota "O valor
-real da produção só existe a partir de 1995", com o ano lido do arquivo. O café segue o
+zero". Um município criado depois do ano mostrado não é "sem dado": tem um estado
+próprio, o fundo da página com um contorno tracejado (ver "Produto web: revisão de
+experiência"). O valor real da produção começa no primeiro ano deflacionado (1995 na soja e
+no milho), e a área plantada em 1988, quando a PAM passou a publicá-la: a linha do tempo de
+cada medida começa no seu primeiro ano com dado, e um ano anterior passa para ele com um
+aviso (antes, esses anos apareciam hachurados, como se faltasse dado na fonte). O café segue o
 contrato: cada série tem os seus anos (em coco até 2001, beneficiado desde 2002, arábica e
 canéfora desde 2012), a troca de série traz o ano para dentro da série e a linha do tempo
 só percorre os anos dela, então nenhuma visão atravessa 2002. O rendimento é calculado no
@@ -712,7 +729,8 @@ primeira interação com o mapa ou a tabela e as malhas detalhadas só ao entrar
 
 **Filtros na frase, visão na URL e tabela.** O título é a frase do rascunho, com cada
 filtro num `select` nativo dentro dela ("Cultura", "Medida" e "Ano" como nomes
-acessíveis), sublinhado na cor do texto e com a largura da opção escolhida
+acessíveis), com um indicador de lista (antes, um sublinhado; ver "Produto web: revisão de
+experiência") e com a largura da opção escolhida
 (`field-sizing`, com medição em JavaScript onde não houver suporte). Nos totais, a frase
 pergunta onde ("Onde se produz soja, em toneladas, em 2025"); no rendimento, quanto rende
 ("Quanto rende a soja, em quilos por hectare, em 2025"), com o artigo de cada cultura e os
@@ -770,9 +788,10 @@ HTML, contra os 34 KB do `analysis.json` e o código do gráfico, se fosse baixa
 na tela; também funciona sem JavaScript. Para não pesar na abertura, o navegador só a
 desenha quando ela se aproxima da tela (`content-visibility: auto`). Uma parcela pode ser
 negativa (a área do café beneficiado encolheu entre 2005 e 2015 enquanto a produção
-cresceu), por isso as barras divergem do zero: o que puxou o crescimento vai para a
-direita, o que encolheu vai para a esquerda, numa escala comum a todas as linhas, com
-traços em 0% e em 100% (o crescimento todo). Cada cultura mostra o período inteiro e os
+cresceu), por isso cada período tem duas barras, área e produtividade, saindo do mesmo zero
+(antes, uma barra empilhada; ver "Produto web: revisão de experiência"): o que puxou o
+crescimento vai para a direita, o que encolheu vai para a esquerda, numa escala comum a
+todas as linhas, com traços em 0% e em 100% (o crescimento todo). Cada cultura mostra o período inteiro e os
 períodos internos que o pacote traz; o café começa em 2005, depois da quebra de 2002. Área e
 produtividade usam dois tons da rampa neutra, porque o marrom e o verde-azulado são da seca
 e da água. A tabela alternativa traz as produções e as áreas colhidas nas pontas e as duas
@@ -977,3 +996,36 @@ nome apontar direto para os seus servidores, e a verificação depois do deploy 
 certificado. HTTPS obrigatório no Pages, e o endereço antigo
 (`alveshenriique.github.io/atlas-da-lavoura/`) redireciona para o novo. Como o Pages é
 publicado por workflow, o domínio fica nas configurações do repositório, sem arquivo `CNAME`.
+
+## Produto web: revisão de experiência (fase 12)
+
+Seis correções pedidas na revisão do site publicado e, na revisão dos prints, mais três ajustes e uma correção achada ao conferir os dados (a área plantada antes de 1988). Os testes seguem a [estratégia de testes](#estratégia-de-testes): as correções que mostravam uma informação errada ganharam teste de regressão; as de design e de texto ficaram com a revisão visual, com prints antes e depois.
+
+**Ranking numerado pela posição.** No Google Chrome, depois de trocar a visão (por exemplo, da soja para o café arábica de 2012), a numeração do ranking ficava velha: o React move as linhas no lugar, e o navegador não renumerava os itens que mudaram de posição ("6. Minas Gerais", o lugar de Minas na soja). O Chromium dos testes não tinha o erro, então ele só apareceu no navegador de verdade. Cada item agora leva a própria posição (`<li value>`), e a regra dos números estruturais aceita um `value` só quando ele é a posição do item (1, 2, 3…): qualquer outro número continua recusado. O teste troca a visão e confere que cada posição é a do ranking dos arquivos de UF. A alternativa de recriar a lista a cada troca (uma `key` nova) também resolveria, mas dependeria de o navegador numerar certo uma lista nova, sem nada que o teste pudesse conferir.
+
+**Valor da produção a partir de 1995.** Antes, os anos anteriores apareciam hachurados, com "sem dado" no painel e no ranking, o que sugeria uma falha na base quando é uma decisão de método (a hiperinflação e as trocas de moeda impedem uma deflação confiável antes do real). Agora a linha do tempo dessa medida vai do primeiro ano do valor ao último (`yearRange` em `lib/explore-view.ts`); um link ou uma troca de medida para um ano anterior passa para esse primeiro ano e o diz numa linha de status ("o mapa passou de 1975 para 1995"), e uma frase junto à legenda explica por que o valor começa ali. "Sem dado" fica para a ausência real na fonte. Os testes conferem que os municípios sem valor no primeiro ano são exatamente os nulos do arquivo, separados entre os que ainda não existiam e os sem dado (abaixo).
+
+**Área plantada a partir de 1988.** Ao conferir os nulos de todas as matrizes, apareceu o mesmo caso do valor: a PAM só publica a área plantada (e, no café, a área em produção) a partir de 1988; antes, o IBGE informa "..." para todos os municípios, e o mapa mostrava esses anos inteiros como "sem dado". O primeiro ano de cada medida passou a vir dos dados: é o primeiro ano em que algum município da matriz tem valor, calculado no build (`measureFirst` em `pages/explorar.astro`) e citado no aviso pela operação de procedência `firstyear`, que o teste recalcula do arquivo. Assim, o valor começa em 1995 e a área plantada em 1988 pela mesma regra, cada um com a sua frase ("antes disso, a PAM publicava só a área colhida"). O teste, que antes olhava só o valor, agora percorre todas as séries e medidas e exige que a linha do tempo ofereça só anos em que o arquivo tem algum valor: um teste assim teria pegado a área plantada desde o começo.
+
+**Municípios que ainda não existiam.** Grandes áreas do Mato Grosso, do Pará e do Tocantins apareciam hachuradas em 1995 como "sem dado", mas eram municípios criados depois. O pacote já traz o primeiro ano de cada município na PAM (`first_pam_year` em `municipalities.json`), e os dados confirmam a leitura. Antes desse ano, todas as células das culturas são "..." (30.176 por cultura), e o pacote não tem nenhum valor. A contagem de municípios existentes a cada ano bate com a do IBGE: 3.974 em 1980, 4.492 em 1991 contra 4.491, 5.505 em 2000 contra 5.507 e 5.562 em 2007 contra 5.564, pelo Atlas Nacional do Brasil 2010. No valor da soja de 1995, dos 631 municípios sem valor, 598 ainda não existiam, 26 não têm dado na fonte e 7 nunca aparecem na PAM. Esses 7 são municípios urbanos antigos, como Diadema e São Caetano do Sul, e continuam "sem dado".
+
+O mapa ganhou um estado próprio: o fundo da página dentro de um contorno fino e tracejado, mais discreto que a hachura, com o mesmo tom dela e nenhuma cor nova. A legenda diz "município ainda não existia", a tabela diz "ainda não existia" e o tooltip acrescenta que o território fazia parte de outro município. O teste confere que os municípios marcados assim são exatamente os de primeiro ano posterior ao ano mostrado, nas contagens do Brasil em três séries e, município por município, na tabela do Mato Grosso. O limite conhecido é Pinto Bandeira (RS), instalado em 2001, extinto em 2002 e reinstalado em 2013: de 2002 a 2012 ele aparece como "sem dado", porque a regra só olha o primeiro ano.
+
+O `municipalities.json` (64 KB com gzip) é baixado só quando o ano mostrado é anterior ao último primeiro ano do pacote, 2025. A visão padrão, a da última safra, desenha sem ele, como antes. O mesmo arquivo já era baixado para os nomes no tooltip e na tabela. Foram descartadas três alternativas:
+- pôr os primeiros anos no HTML, que custaria de 1,5 a 2,1 KB em toda visita, quase toda a folga do orçamento;
+- uma hachura mais clara, porque duas texturas parecidas se confundem;
+- o fundo da faixa, que não se distingue do "não produziu".
+
+**Números da legenda no formato do painel.** A legenda do valor mostrava "5.000.000" sob "em mil R$ de 2025", e o painel, "R$ 5,4 bi". As referências dos círculos agora usam o formato do painel para números redondos (`short` e `shortbrl` em `lib/format.ts`: a unidade a partir de mil e sem a casa decimal zero, "R$ 5 bi", "R$ 200 mi", "100 mil", "2 mil"). O título da legenda do valor passou a "em reais de 2025". Os valores continuam vindo dos arquivos, pela operação `circle:k` da procedência, agora com esses formatos. O rendimento segue em números inteiros ("2.800"), porque abreviar não ajuda em quilos por hectare. O tooltip e a tabela também ficam com o número exato.
+
+**Filtros na frase do título.** O sublinhado lembrava um link e precisava da frase de instrução ao lado. Cada filtro ganhou um indicador de lista (uma pequena seta, desenhada com bordas, porque a CSP não aceita imagens em `data:`), o fundo da faixa sob o ponteiro e um contorno visível no foco do teclado, só com cores que a identidade já tem. A frase de instrução saiu, e o título passou a ocupar dez colunas, para a frase mais longa continuar em duas linhas. A ponta da seta toca o fim da caixa do filtro, para a vírgula depois dele ficar colada, como depois de uma palavra.
+
+**Decomposição com duas barras.** A barra empilhada com uma parte negativa era correta, mas parecia erro. Cada período agora tem duas barras, área e produtividade, saindo do mesmo zero, cada uma com o próprio sinal e o próprio rótulo, logo depois da ponta da barra (ou do zero, numa barra que vai para a esquerda). O teste confere que cada barra vai para o lado do zero que o sinal do dado indica e que o rótulo fica na linha da sua barra.
+
+**Número de destaque do painel.** A unidade "t de café beneficiado" aparecia grande e quebrava o número em duas linhas. Ao lado do número fica só a unidade curta ("t"), pequena e na cor secundária; o que ela mede vai para a linha de baixo ("Produção, em t de café beneficiado") e a série, para a linha de cima ("Brasil · café arábica · 2012").
+
+**Método: a data por extenso.** "Versão dos dados 2026.11.10, gerada em 10/11/2026" repetia a data. A página diz "Dados publicados em 10 de novembro de 2026" (formato `longdate`, lido do `catalog.json`), e a versão técnica fica só no rodapé.
+
+**Verificação pede as páginas como um navegador.** O beacon do Web Analytics que a Cloudflare injeta só aparece para pedidos que aceitam HTML, e a verificação pedia as páginas com o `Accept` padrão do Node: só o navegador do fim da verificação o pegou. Agora as páginas são pedidas com os cabeçalhos de um navegador, qualquer script de outra origem reprova a página, e o HTML precisa ter um ETag que responda 304 (a injeção no caminho tira o ETag, e sem ele o navegador baixa a página inteira a cada visita).
+
+**Orçamento.** As correções acrescentaram 1.078 bytes ao Explorar: 654 na primeira rodada e 424 na segunda. No Lighthouse, ele ficou em 714.090 de 716.800 bytes, com folga de cerca de 2,6 KiB. O JavaScript ficou em 94.819 bytes. O Explorar continua congelado até o ciclo de dados com os totais por UF.

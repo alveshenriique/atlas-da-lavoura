@@ -110,3 +110,13 @@ describe("territory operations", () => {
   });
 });
 
+
+describe("the first year of a matrix", () => {
+  it("is the first year in which any municipality has a value", () => {
+    const planted = { years: [1986, 1987, 1988, 1989], values: [[null, null, 0, 5], [null, null, null, 7]] };
+    const ref = parseRef("explore/soybean/planted_or_bearing_area_ha.json#/values!firstyear|year");
+    expect(resolveRef(ref, planted)).toBe(1988);
+    expect(renderRef(ref, planted)).toBe("1988");
+    expect(() => resolveRef(ref, { years: [1986], values: [[null], [null]] })).toThrow(/no value in any year/);
+  });
+});

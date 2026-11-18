@@ -7,8 +7,8 @@ import { DBT_DOCS_URL } from "../lib/site-pages";
 import { sourced } from "../lib/sourced";
 import { bindShortWords } from "../lib/typography";
 
-const version = sourced("catalog.json", "/meta/data_version", "text");
-const generated = sourced("catalog.json", "/meta/data_version", "date");
+// The publication date of the data; the technical version stays in the footer.
+const published = sourced("catalog.json", "/meta/data_version", "longdate");
 const citations = fullCitations();
 ---
 
@@ -28,9 +28,7 @@ const citations = fullCitations();
   <div class="container grid">
     <div class="col-text">
       <h1 class="page-title">Método</h1>
-      <p class="placeholder">
-        Versão dos dados <Num n={version} />, gerada em <Num n={generated} />.
-      </p>
+      <p class="placeholder">Dados publicados em <Num n={published} />.</p>
 
       <section id="fontes" aria-labelledby="fontes-titulo">
         <h2 id="fontes-titulo">Fontes e citações</h2>

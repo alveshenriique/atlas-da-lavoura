@@ -18,8 +18,9 @@ import { contains, MAP_PAD, type MapGeometry } from "./geometry";
 export const TINY_PX = 1.5;
 
 /** Fill codes of a frame: no data, zero published, a yield from too small a harvested
- *  area to compare (lib/classify.ts), then one code per class. */
-export const CODE = { nodata: 0, zero: 1, small: 2, firstClass: 3 } as const;
+ *  area to compare (lib/classify.ts), a municipality that did not exist yet in that year
+ *  (it is not in the PAM before its first year), then one code per class. */
+export const CODE = { nodata: 0, zero: 1, small: 2, notyet: 3, firstClass: 4 } as const;
 
 export interface Palette {
   classes: string[];
@@ -155,11 +156,13 @@ export class MapRenderer {
       hatchPattern(ctx, palette, s, this.dpr),
       palette.zero,
       dotPattern(ctx, palette, s, this.dpr),
+      palette.background,
       ...palette.classes,
     ];
-    groups.forEach((members, code) => {
+    let notYet: Path2D | null = null;
+    for (const [code, members] of groups.entries()) {
       const fill = fills[code];
-      if (!fill || members.length === 0) return;
+      if (!fill || members.length === 0) continue;
       const group = new Path2D();
       for (const i of members) {
         const p = scene.paths[i];
@@ -167,7 +170,8 @@ export class MapRenderer {
       }
       ctx.fillStyle = fill;
       ctx.fill(group);
-    });
+      if (code === CODE.notyet) notYet = group;
+    }
     ctx.lineJoin = "round";
     if (this.thinBorders) {
       const all = new Path2D();
@@ -175,6 +179,15 @@ export class MapRenderer {
       ctx.strokeStyle = palette.background;
       ctx.lineWidth = 0.5 * px;
       ctx.stroke(all);
+    }
+    // A municipality that did not exist yet: the page colour inside a thin dashed outline,
+    // lighter than the hatching of missing data.
+    if (notYet) {
+      ctx.strokeStyle = palette.hatch;
+      ctx.lineWidth = 0.5 * px;
+      ctx.setLineDash([2 * px, 1.5 * px]);
+      ctx.stroke(notYet);
+      ctx.setLineDash([]);
     }
     // State borders with a halo in the page colour, so they read over dark and light fills.
     if (scene.borders) {

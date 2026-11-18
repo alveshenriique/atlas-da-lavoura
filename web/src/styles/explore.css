@@ -1,7 +1,8 @@
 /* Explorar, after the approved editorial draft with the combined direction's adjustments:
-   the title sentence carries the filters (underlined in the text colour; brown is only for
-   drought), the map takes eight columns and the side panel the other four (part B), the
-   timeline and the source line sit under the map, and the decomposition comes below. */
+   the title sentence carries the filters (words of the sentence with a list marker, in the
+   identity's colours; brown is only for drought), the map takes eight columns and the side
+   panel the other four (part B), the timeline and the source line sit under the map, and the
+   decomposition comes below. */
 
 .explore__head {
   display: grid;
@@ -25,28 +26,57 @@
   font-size: min(var(--size-headline), 7.2vw);
 }
 
-.explore__hint {
+/* The line that says a year was moved (the real value starts later); empty, it takes no
+   room but stays in the page, so screen readers announce it when it fills. */
+.explore__notice {
   margin: 0.75rem 0 0;
   color: var(--color-text-secondary);
 }
 
+.explore__notice:empty {
+  margin: 0;
+}
+
+/* With the filters clear by themselves there is no instruction beside the title, which
+   takes ten columns: the longest sentence keeps to two lines. */
 @media (min-width: 64rem) {
   .explore__title {
-    grid-column: 1 / span 8;
+    grid-column: 1 / span 10;
   }
 
-  .explore__hint {
-    grid-column: 9 / span 4;
-    margin: 0;
-    padding-bottom: 0.4rem;
+  .explore__notice {
+    grid-column: 1 / span 8;
   }
 }
 
-/* The filters read as words of the sentence: same font, an underline, no box. Where
-   field-sizing is missing, the island sizes each one to its chosen option. */
+/* The filters read as words of the sentence, in the same font, and look like what they
+   are: each carries a list marker (a small chevron in the secondary text colour), takes the
+   band's background under the pointer and a visible outline with the keyboard. No underline
+   (that reads as a link) and no colour outside the identity. Where field-sizing is missing,
+   the island sizes each one to its chosen option. */
 /* A filter and the punctuation after it never part across lines. */
 .explore__term {
   white-space: nowrap;
+}
+
+.explore__select {
+  position: relative;
+  display: inline-block;
+}
+
+/* The chevron, drawn with two borders (no image: the CSP allows none from data: URIs). Its
+   tip touches the end of the box, so the punctuation after a filter sits right next to it. */
+.explore__select::after {
+  content: "";
+  position: absolute;
+  right: 0.04em;
+  top: 50%;
+  width: 0.19em;
+  height: 0.19em;
+  border-right: 0.06em solid var(--color-text-secondary);
+  border-bottom: 0.06em solid var(--color-text-secondary);
+  transform: translateY(-70%) rotate(45deg);
+  pointer-events: none;
 }
 
 .explore__title select {
@@ -56,17 +86,23 @@
   color: inherit;
   background: transparent;
   border: 0;
-  border-bottom: 2px solid currentColor;
-  border-radius: 0;
-  padding: 0;
-  margin: 0;
+  border-radius: 0.12em;
+  /* Room for the chevron on the right; the hover background reaches a little to the left,
+     and the negative margin keeps the word where the sentence puts it. */
+  padding: 0 0.4em 0 0.12em;
+  margin: 0 0 0 -0.12em;
   cursor: pointer;
   field-sizing: content;
   line-height: 1.1;
 }
 
 .explore__title select:hover {
-  border-bottom-color: var(--color-text-secondary);
+  background: var(--color-band);
+}
+
+.explore__title select:focus-visible {
+  outline: 2px solid var(--color-text);
+  outline-offset: 2px;
 }
 
 .explore__title option {
@@ -407,6 +443,14 @@ html:not(.js) .explore__loading {
   background: var(--color-seq-6);
 }
 
+/* A municipality that did not exist yet: the page colour inside a thin dashed outline, as
+   on the map (map-renderer.ts), lighter than the hatching of missing data. */
+.legend__swatch--notyet {
+  box-sizing: border-box;
+  background: var(--color-background);
+  border: 1px dashed var(--color-text-muted);
+}
+
 /* Same hatching as the map (map-renderer.ts): a texture, never a light value. */
 .legend__swatch--hatch {
   background: repeating-linear-gradient(
@@ -581,10 +625,12 @@ html:not(.js) .explore__loading {
   font-size: var(--size-stat);
   line-height: 1.1;
   color: var(--color-text);
+  white-space: nowrap;
 }
 
 /* The display number, as in the Análise: IBM Plex Sans Bold, here from its subset with only
-   the characters of a number (fonts.css), to fit the page's budget. The unit stays in mono. */
+   the characters of a number (fonts.css), to fit the page's budget. The unit, short, stays in
+   mono, small and in the secondary colour. */
 .explore-panel__number .num {
   font-family: var(--font-display-number-subset);
   font-feature-settings: normal;
@@ -593,7 +639,8 @@ html:not(.js) .explore__loading {
 }
 
 .explore-panel__unit {
-  font-size: 0.55em;
+  margin-left: 0.35em;
+  font-size: 0.5em;
   color: var(--color-text-secondary);
 }
 
@@ -602,8 +649,9 @@ html:not(.js) .explore__loading {
   color: var(--color-text-secondary);
 }
 
+/* The peak's label hangs 1.4rem over the plot: the margin keeps it clear of the line above. */
 .series-chart {
-  margin: 1rem 0 0;
+  margin: 1.9rem 0 0;
 }
 
 .series-chart__plot {
@@ -837,13 +885,16 @@ html:not(.js) .explore__loading {
 
 .growth__chart {
   position: relative;
+  /* The period column, and the room right of the bars for the label of the longest one. */
   --label: 6.5rem;
+  --value-room: 9rem;
 }
 
-/* On a phone the period column gives the bars more room, so the labels fit under them. */
+/* On a phone the period goes above its bars, so the bars keep the whole width. */
 @media (max-width: 29.99rem) {
   .growth__chart {
-    --label: 5rem;
+    --label: 0rem;
+    --value-room: 7.75rem;
   }
 }
 
@@ -852,6 +903,7 @@ html:not(.js) .explore__loading {
   position: relative;
   height: 1.3rem;
   margin-left: var(--label);
+  margin-right: var(--value-room);
 }
 
 .growth__tick {
@@ -884,16 +936,17 @@ html:not(.js) .explore__loading {
 .growth__row {
   display: grid;
   grid-template-columns: var(--label) minmax(0, 1fr);
-  grid-template-areas:
-    "period bar"
-    ". values";
-  column-gap: 0;
   align-items: center;
-  padding-bottom: 0.35rem;
+  padding-bottom: 0.55rem;
+}
+
+@media (max-width: 29.99rem) {
+  .growth__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .growth__period {
-  grid-area: period;
   color: var(--color-text);
 }
 
@@ -901,53 +954,62 @@ html:not(.js) .explore__loading {
   color: var(--color-text-secondary);
 }
 
-.growth__bar {
-  grid-area: bar;
+/* The two bars of a period, area over yield, both from the same zero; the zero and the 100%
+   lines cross both. The labels may run into the room on the right. */
+.growth__pair {
   position: relative;
-  height: 1rem;
+  display: block;
+  margin-right: var(--value-room);
+}
+
+.growth__line {
+  position: relative;
+  display: block;
+  height: 1.2rem;
+}
+
+.growth__bar {
+  position: absolute;
+  top: 0.3rem;
+  bottom: 0.3rem;
 }
 
 .growth__row--part .growth__bar {
-  height: 0.6rem;
+  top: 0.4rem;
+  bottom: 0.4rem;
 }
 
-.growth__segment {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-}
-
-.growth__segment--area {
+.growth__bar--area {
   background: var(--color-seq-5);
 }
 
-.growth__segment--yield {
+.growth__bar--yield {
   background: var(--color-seq-3);
+}
+
+/* The label has the page's background, so the 100% line does not cross its text; it starts
+   a little after the bar's end (or after zero), so the zero line stays whole. */
+.growth__value {
+  position: absolute;
+  top: 0;
+  margin-left: 0.3rem;
+  padding: 0 0.15rem;
+  line-height: 1.2rem;
+  white-space: nowrap;
+  color: var(--color-text-secondary);
+  background: var(--color-background);
 }
 
 .growth__zero,
 .growth__whole {
   position: absolute;
-  top: -0.25rem;
-  bottom: -0.25rem;
+  top: -0.1rem;
+  bottom: -0.1rem;
   border-left: 1px solid var(--color-text);
 }
 
 .growth__whole {
   border-left: 1px dashed var(--color-text-muted);
-}
-
-/* Under its own bar, starting where the bar starts (margin-left, set per row, is a share of
-   the bar's column). */
-.growth__values {
-  grid-area: values;
-  padding-top: 0.15rem;
-  color: var(--color-text-secondary);
-}
-
-/* If a label must wrap, it wraps between its two parts, never inside one. */
-.growth__part {
-  white-space: nowrap;
 }
 
 /* Why coffee's shares pass 100% and below zero, under its bars and aligned with them. */

@@ -38,7 +38,7 @@ test.describe("the side panel", () => {
     page.on("request", (r) => requested.push(new URL(r.url()).pathname));
     await page.goto("/explorar/");
     await ready(page);
-    await expect(panel(page).locator(".explore-panel__kicker")).toHaveText(/^Brasil\s+·\s+2025$/);
+    await expect(panel(page).locator(".explore-panel__kicker")).toHaveText(/^Brasil\s+·\s+soja\s+·\s+2025$/);
     const matrix = await load<Matrix>(page, request, "explore/soybean/production_t.json");
     const total = matrix.country_total[matrix.years.indexOf(2025)] ?? 0;
     await expect(panel(page).locator(".explore-panel__number .num")).toHaveText(format(total, "compact"));
@@ -57,7 +57,7 @@ test.describe("the side panel", () => {
     await filter(page, "Medida").selectOption({ label: "em hectares colhidos" });
     await filter(page, "Ano").selectOption("2000");
     await ready(page);
-    await expect(panel(page).locator(".explore-panel__kicker")).toHaveText(/^Brasil\s+·\s+2000$/);
+    await expect(panel(page).locator(".explore-panel__kicker")).toHaveText(/^Brasil\s+·\s+milho\s+·\s+2000$/);
     const matrix = await load<Matrix>(page, request, "explore/corn/harvested_area_ha.json");
     const total = matrix.country_total[matrix.years.indexOf(2000)] ?? 0;
     await expect(panel(page).locator(".explore-panel__number .num")).toHaveText(format(total, "compact"));
@@ -113,7 +113,7 @@ test.describe("the side panel", () => {
     const s = pr.series.soybean;
     const i = s?.years.indexOf(2025) ?? -1;
     const state = ((s?.production_t[i] ?? 0) / (s?.harvested_area_ha[i] ?? 1)) * 1000;
-    await expect(panel(page).locator(".explore-panel__kicker")).toHaveText(/^Paraná\s+·\s+2025$/);
+    await expect(panel(page).locator(".explore-panel__kicker")).toHaveText(/^Paraná\s+·\s+soja\s+·\s+2025$/);
     await expect(panel(page).locator(".explore-panel__number .num")).toHaveText(format(state, "int"));
     // The ranking of the yield has no share column and ranks by the same ratio.
     await expect(panel(page).locator(".ranking__caption")).toHaveText("Rendimento, em kg/ha");
@@ -159,6 +159,49 @@ test.describe("the side panel", () => {
       "aria-expanded",
       "true",
     );
+  });
+
+  // Regression: after the view changed, Chrome kept the old numbers of the rows that moved
+  // ("6. Minas Gerais" in the coffee of 2012, its place in the soybean ranking). Each row
+  // now carries its rank, and the rank shown must be the position in this ranking.
+  test("numbers the states by their rank in the current view, after the view changes", async ({
+    page,
+    request,
+  }) => {
+    await page.goto("/explorar/");
+    await ready(page);
+    await expect(rows(page).first()).toContainText("Mato Grosso");
+    await panel(page).getByRole("button", { name: "Mostrar todas as UFs" }).click();
+    await filter(page, "Cultura").selectOption({ label: "café arábica" });
+    await filter(page, "Ano").selectOption("2012");
+    await ready(page);
+    await expect(panel(page).locator(".explore-panel__kicker")).toHaveText(/café arábica\s+·\s+2012$/);
+    await expect(rows(page).first()).toContainText("Minas Gerais");
+    const ranked = await rows(page).evaluateAll((els) =>
+      els.map((el) => ({
+        value: el.getAttribute("value"),
+        name: el.querySelector(".ranking__name")?.textContent ?? "",
+      })),
+    );
+    expect(ranked.map((r) => r.value)).toEqual(ranked.map((_, i) => String(i + 1)));
+    // The order is the ranking's: by the state files, largest first.
+    const states = (await load<{ states: { state_abbreviation: string[]; state_name: string[] } }>(
+      page,
+      request,
+      "municipalities.json",
+    )).states;
+    const expected = (
+      await Promise.all(
+        states.state_abbreviation.map(async (uf, i) => {
+          const s = (await load<Place>(page, request, `places/state/${uf}.json`)).series.coffee_arabica;
+          return { name: states.state_name[i] ?? uf, value: s?.production_t[s.years.indexOf(2012)] ?? null };
+        }),
+      )
+    )
+      .filter((s) => s.value !== null && s.value > 0)
+      .sort((a, b) => (b.value ?? 0) - (a.value ?? 0))
+      .map((s) => s.name);
+    expect(ranked.slice(0, expected.length).map((r) => r.name)).toEqual(expected);
   });
 });
 
@@ -254,20 +297,51 @@ test.describe("the decomposition", () => {
     await expect(areas).toHaveCount(2);
     const [from, to] = await areas.evaluateAll((els) => els.map((el) => Number(el.getAttribute("value"))));
     expect(to).toBeLessThan(from ?? 0);
-    // Each label sits right under its own bar and starts where the bar starts.
-    for (const row of await figure.locator(".growth__row").all()) {
-      const segments = await row.locator(".growth__segment").evaluateAll((els) =>
-        els.map((el) => el.getBoundingClientRect()).map((r) => ({ left: r.left, bottom: r.bottom })),
-      );
-      const start = Math.min(...segments.map((r) => r.left));
-      const bottom = Math.max(...segments.map((r) => r.bottom));
-      const label = await row.locator(".growth__values").evaluate((el) => {
-        const r = el.getBoundingClientRect();
-        return { left: r.left, top: r.top };
-      });
-      expect(Math.abs(label.left - start)).toBeLessThan(1);
-      expect(label.top).toBeGreaterThanOrEqual(bottom - 1);
-      expect(label.top - bottom).toBeLessThan(12);
+    // Two bars per period, area and yield, both from the same zero: each goes to the right of
+    // zero when its share is positive and to the left when negative, as the data say, and its
+    // label is on its own line, after its end (or after zero, for a bar going left).
+    const lines = await figure.locator(".growth__row").evaluateAll((rowEls) =>
+      rowEls.map((row) => {
+        const zero = row.querySelector(".growth__zero")?.getBoundingClientRect().left ?? Number.NaN;
+        return [...row.querySelectorAll(".growth__line")].map((line) => {
+          const bar = line.querySelector(".growth__bar")?.getBoundingClientRect();
+          const label = line.querySelector(".growth__value")?.getBoundingClientRect();
+          const box = line.getBoundingClientRect();
+          return {
+            factor: line.getAttribute("data-factor"),
+            share: Number(line.querySelector(".growth__value data")?.getAttribute("value")),
+            zero,
+            left: bar?.left ?? Number.NaN,
+            right: bar?.right ?? Number.NaN,
+            labelLeft: label?.left ?? Number.NaN,
+            // On its own line: the label's middle is inside the line of its bar.
+            inLine: !!label && (label.top + label.bottom) / 2 > box.top && (label.top + label.bottom) / 2 < box.bottom,
+          };
+        });
+      }),
+    );
+    expect(lines.length).toBeGreaterThan(0);
+    for (const pair of lines) {
+      expect(pair.map((l) => l.factor)).toEqual(["area", "yield"]);
+      for (const l of pair) {
+        expect(Number.isFinite(l.share), JSON.stringify(l)).toBe(true);
+        if (l.share > 0) {
+          expect(Math.abs(l.left - l.zero), JSON.stringify(l)).toBeLessThan(1.5);
+          expect(l.right).toBeGreaterThan(l.zero);
+          expect(l.labelLeft).toBeGreaterThanOrEqual(l.right - 1);
+        } else if (l.share < 0) {
+          expect(Math.abs(l.right - l.zero), JSON.stringify(l)).toBeLessThan(1.5);
+          expect(l.left).toBeLessThan(l.zero);
+          expect(l.labelLeft).toBeGreaterThanOrEqual(l.zero - 1);
+        }
+        expect(l.inLine, JSON.stringify(l)).toBe(true);
+      }
+    }
+    // And the data say what the reading promises: coffee's area shrank, its yield grew.
+    const coffee = lines.slice(-3);
+    for (const [area, yieldPart] of coffee) {
+      expect(area?.share).toBeLessThan(0);
+      expect(yieldPart?.share).toBeGreaterThan(1);
     }
     await figure.locator("details summary").click();
     await expect(figure.locator("table tbody tr")).toHaveCount(await figure.locator(".growth__row").count());

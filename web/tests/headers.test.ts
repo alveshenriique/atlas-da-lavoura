@@ -27,6 +27,16 @@ describe("the _headers generator", () => {
     expect(hashSource("window.a = 1;")).toBe(`'sha256-${digest}'`);
   });
 
+  it("finds the analytics beacon a CDN injects for browsers (a script from another origin)", () => {
+    // The tag Cloudflare adds before </body> when Web Analytics is on (seen in production).
+    const beacon =
+      '<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v1" ' +
+      'integrity="sha512-x" data-cf-beacon=\'{"version":"2024.11.0","token":"t","spa":2}\' crossorigin="anonymous"></script>';
+    expect(inlineBlocks(`<body><p>x</p>${beacon}</body>`).problems).toEqual([
+      "script from another origin: https://static.cloudflareinsights.com/beacon.min.js/v1",
+    ]);
+  });
+
   it("refuses what the policy would block anyway", () => {
     const found = inlineBlocks(
       [

@@ -142,7 +142,7 @@ async function collect(page: Page): Promise<Collected> {
       structural: list.getAttribute("data-structural") === "list",
       start: list instanceof HTMLOListElement ? list.start : null,
       reversed: list instanceof HTMLOListElement && list.reversed,
-      hasValues: [...list.children].some((child) => child.hasAttribute("value")),
+      values: [...list.children].map((child) => (child.hasAttribute("value") ? Number(child.getAttribute("value")) : null)),
     }));
 
     // Numbers in CSS-generated content cannot carry provenance: always refused.

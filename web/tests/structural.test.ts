@@ -21,7 +21,7 @@ const list = (extra: Partial<NumberedList> = {}): NumberedList => ({
   structural: true,
   start: 1,
   reversed: false,
-  hasValues: false,
+  values: [null, null, null],
   ...extra,
 });
 
@@ -59,8 +59,17 @@ describe("structural marks", () => {
     expect(checkNumberedLists([list({ structural: false })])).toEqual([
       "ol.sources: numbered list not marked as structural",
     ]);
-    for (const wrong of [{ start: 88 }, { reversed: true }, { hasValues: true }, { tag: "ul" }]) {
+    for (const wrong of [{ start: 88 }, { reversed: true }, { tag: "ul" }]) {
       expect(checkNumberedLists([list(wrong)])).toHaveLength(1);
+    }
+  });
+
+  it("accept items that carry their own position, and nothing else", () => {
+    // A list reordered in place numbers its items explicitly (browsers do not always
+    // renumber moved items): 1, 2, 3 in document order passes.
+    expect(checkNumberedLists([list({ values: [1, 2, 3] })])).toEqual([]);
+    for (const values of [[2, 1, 3], [1, 2, 537], [1, null, 3], [0, 1, 2]]) {
+      expect(checkNumberedLists([list({ values })]), JSON.stringify(values)).toHaveLength(1);
     }
   });
 });
