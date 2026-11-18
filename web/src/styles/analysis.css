@@ -2,42 +2,82 @@
    beside the title, the figure, the supporting numbers and the search band. Colours, fonts
    and sizes come from tokens.css. */
 
-/* --- Intro band: one sentence on what the Atlas is and a line of what to do in it, above
-   the opening; short, so the main number stays on the first screen of a computer. On a
-   phone the actions stack (one per line, easy to tap); from 48rem they share one line. --- */
+/* --- Intro band: one sentence on what the Atlas is and the three things to do in it,
+   above the opening; low, so the main number stays high on the first screen. From 64rem it
+   takes two columns of the grid: the sentence on the left at a reading measure, the actions
+   stacked on the right, each a full-width row with an arrow. Below that, all stacked. --- */
 .intro {
   padding-block: 0.9rem 1rem;
 }
 
-/* Two lines on a computer: a narrower measure left the last words alone on a third. */
+.intro__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.5rem var(--gutter);
+}
+
+@media (min-width: 64rem) {
+  .intro__row {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    align-items: center;
+  }
+
+  .intro__text {
+    grid-column: 1 / span 7;
+  }
+
+  .intro__actions {
+    grid-column: 9 / -1;
+  }
+}
+
 .intro__text {
   margin: 0;
-  max-width: 52rem;
+  max-width: 46rem;
   text-wrap: pretty;
 }
 
 .intro__actions {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
   list-style: none;
-  margin: 0.5rem 0 0;
+  margin: 0;
   padding: 0;
 }
 
-@media (min-width: 48rem) {
-  .intro__actions {
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 0.25rem 0;
-  }
+/* Each action is a row of its own: a comfortable target (at least 2rem high), an arrow
+   drawn with two borders (the arrow character is outside the fonts' subsets), the page's
+   background under the pointer and a visible outline with the keyboard. */
+.intro__actions a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 2rem;
+  padding-inline: 0.4rem;
+  margin-inline: -0.4rem;
+  color: var(--color-text);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
 
-  /* A separator between the actions, left out of what screen readers say. */
-  .intro__actions li + li::before {
-    content: "·" / "";
-    padding-inline: 0.6em;
-    color: var(--color-text-muted);
-  }
+.intro__actions a::after {
+  content: "";
+  flex: none;
+  width: 0.45em;
+  height: 0.45em;
+  border-top: 1.5px solid var(--color-text-secondary);
+  border-right: 1.5px solid var(--color-text-secondary);
+  transform: rotate(45deg);
+  margin-right: 0.2em;
+}
+
+.intro__actions a:hover {
+  background: var(--color-background);
+}
+
+.intro__actions a:focus-visible {
+  outline: 2px solid var(--color-text);
+  outline-offset: 0;
 }
 
 /* --- Opening: title and deck on the left eight columns, the main number on the right four,
