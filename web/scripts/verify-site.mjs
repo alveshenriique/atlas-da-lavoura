@@ -5,6 +5,8 @@
 //   certificates are valid for at least 14 more days;
 // - the main pages, robots.txt, the sitemap and the preview image answer 200, an unknown
 //   address answers 404 with the site's page;
+// - robots.txt is, byte for byte, the one the build writes (lib/site-pages.ts), so nothing
+//   added on the way, such as a CDN's managed robots.txt, goes unnoticed;
 // - every page carries the security headers, and every inline script of the HTML that
 //   Cloudflare actually serves is allowed by the CSP (catches scripts injected on the way,
 //   such as email obfuscation or Rocket Loader); data and bundles are immutable, HTML is not;
@@ -17,6 +19,7 @@ import { connect } from "node:tls";
 
 import { chromium } from "@playwright/test";
 
+import { robotsTxt } from "../src/lib/site-pages.ts";
 import { CACHE, hashSource, inlineBlocks } from "./make-headers.mjs";
 
 const args = process.argv.slice(2);
@@ -133,6 +136,10 @@ for (const [path, type] of [["/robots.txt", "text/plain"], ["/sitemap.xml", "xml
   const response = await get(`${origin}${path}`);
   check(`${path} answers 200 (${type})`, response.status === 200 && (response.headers.get("content-type") ?? "").includes(type), `${response.status} ${response.headers.get("content-type")}`);
 }
+const robots = Buffer.from(await (await get(`${origin}/robots.txt`)).arrayBuffer());
+const expected = Buffer.from(robotsTxt(), "utf8");
+check("robots.txt is byte for byte the one of the build", robots.equals(expected),
+  robots.equals(expected) ? `${robots.length} bytes` : `${robots.length} bytes served, ${expected.length} expected; starts with ${JSON.stringify(robots.subarray(0, 60).toString("utf8"))}`);
 const missing = await get(`${origin}/nao-existe/`);
 check("an unknown address answers 404 with the site's page", missing.status === 404 && (await missing.text()).includes("Este endereço não existe"), String(missing.status));
 if (docs) {
@@ -153,8 +160,12 @@ for (const path of ["/", "/explorar/"]) {
   await page.addInitScript(() =>
     document.addEventListener("securitypolicyviolation", (e) => console.error(`Refused to load: ${e.effectiveDirective} ${e.blockedURI}`)),
   );
-  await page.goto(`${origin}${path}`, { waitUntil: "load", timeout: 60_000 });
-  if (path === "/explorar/") {
+  // A page that does not load fails its check; the summary is still written.
+  const loaded = await page.goto(`${origin}${path}`, { waitUntil: "load", timeout: 60_000 }).then(
+    () => true,
+    (error) => (problems.push(error.message.split("\n")[0]), false),
+  );
+  if (loaded && path === "/explorar/") {
     await page.locator(".explore__map[data-ready='true']").waitFor({ timeout: 60_000 }).catch(() => problems.push("the map was not drawn"));
   }
   check(`${path} runs in the browser without CSP violations or errors`, problems.length === 0, problems.join(" | "));

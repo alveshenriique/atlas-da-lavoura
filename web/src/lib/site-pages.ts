@@ -2,6 +2,10 @@
 // "em construção" notice (components/UnderConstruction.astro), carries noindex and stays out
 // of the sitemap until it is finished: search engines and link previews should find the
 // finished pages first. Read by the layout (robots meta), the sitemap and the tests.
+
+/** The address of the published site (astro.config.mjs reads it from here). */
+export const SITE_URL = "https://atlasdalavoura.com.br";
+
 export type PageStatus = "ready" | "under-construction";
 
 interface SitePage {
@@ -28,6 +32,16 @@ export function pageStatus(pathname: string): PageStatus | null {
 
 /** The finished pages, the only ones the sitemap lists. */
 export const SITEMAP_PATHS = SITE_PAGES.filter((p) => p.status === "ready" && !p.prefix).map((p) => p.path);
+
+/**
+ * The robots.txt of the site, byte for byte: every crawler may read the whole site (the
+ * unfinished pages say noindex in their own HTML), and the sitemap lists the finished pages.
+ * Served by pages/robots.txt.ts; scripts/verify-site.mjs compares the published file with it,
+ * so nothing added on the way (a CDN's managed robots.txt, for example) goes unnoticed.
+ */
+export function robotsTxt(site: string = SITE_URL): string {
+  return `User-agent: *\nAllow: /\n\nSitemap: ${new URL("/sitemap.xml", site).href}\n`;
+}
 
 /** The dbt documentation of the data models (GitHub Pages, with the project's domain). */
 export const DBT_DOCS_URL = "https://docs.atlasdalavoura.com.br/";
