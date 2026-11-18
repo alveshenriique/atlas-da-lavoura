@@ -15,7 +15,9 @@
 // legend of a matrix (lib/symbols.ts), `ybreak:k` the k-th class limit of the yield, over
 // the municipalities with a comparable harvested area (lib/classify.ts), and `yield` the
 // yield of one cell; the yield operations read the production matrix of the reference and
-// the harvested-area matrix next to it (siblingFile), as the data contract defines yield.
+// the harvested-area matrix next to it (siblingFile), as the data contract defines yield;
+// `firstyear` is the first year of the file's years in which any municipality of the
+// matrix has a value (where a measure starts later than its series).
 // For the territories of the place files: `share` is a value over Brazil's at the same
 // pointer of places/country.json, and `areayield` the yield of a territory, its production
 // over the harvested area at the same place of the file (sum over sum, never a mean of
@@ -40,7 +42,8 @@ export type Op =
   | "ybreak"
   | "share"
   | "areayield"
-  | "yield";
+  | "yield"
+  | "firstyear";
 
 export interface Ref {
   file: string;
@@ -63,10 +66,25 @@ const OPS = new Set<string>([
   "share",
   "areayield",
   "yield",
+  "firstyear",
 ]);
 const WITH_ARGUMENT = new Set<string>(["count", "circle", "ybreak"]);
 const NEEDS_ARGUMENT = new Set<string>(["circle", "ybreak"]);
-const FORMATS = new Set<string>(["int", "year", "pct", "spct", "dec2", "sdec2", "text", "date", "compact", "brl"]);
+const FORMATS = new Set<string>([
+  "int",
+  "year",
+  "pct",
+  "spct",
+  "dec2",
+  "sdec2",
+  "text",
+  "date",
+  "longdate",
+  "compact",
+  "brl",
+  "short",
+  "shortbrl",
+]);
 
 export function serializeRef(ref: Ref): string {
   const op = ref.op ? `!${ref.op}${ref.arg !== undefined ? `:${ref.arg}` : ""}` : "";
@@ -240,6 +258,13 @@ export function resolveRef(
         yieldBreaksCache.set(production, (breaks = classBreaks(pooledPositives(yields))));
       }
       return nth(breaks, ref);
+    }
+    case "firstyear": {
+      const matrix = matrixOf(node, ref);
+      const years = numbers(getPointer(doc, "/years"), ref);
+      const col = years.findIndex((_, c) => matrix.some((row) => row[c] !== null && row[c] !== undefined));
+      if (col < 0) throw new Error(`${serializeRef(ref)} has no value in any year`);
+      return years[col];
     }
     case "yield": {
       const production = typeof node === "number" ? node : null;

@@ -31,6 +31,9 @@ describe("format", () => {
   it("turns the data version and ISO dates into dd/mm/yyyy", () => {
     expect(format("2026.11.10", "date")).toBe("10/11/2026");
     expect(format("2026-11-10T00:05:09Z", "date")).toBe("10/11/2026");
+    expect(format("2026.11.10", "longdate")).toBe("10 de novembro de 2026");
+    expect(format("2026-03-01T00:00:00Z", "longdate")).toBe("1º de março de 2026");
+    expect(() => format("2026.13.01", "longdate")).toThrow(TypeError);
   });
 
   it("refuses to format what is not a number", () => {
@@ -48,6 +51,18 @@ describe("format", () => {
     expect(format(1234567890, "compact")).toBe("1,2 bi");
     expect(format(315194933, "brl")).toBe("R$ 315,2 bi");
     expect(format(4329958, "brl")).toBe("R$ 4,3 bi");
+  });
+
+  it("writes round references as a legend shows them, the unit from a thousand", () => {
+    expect(format(100_000, "short")).toBe("100 mil");
+    expect(format(20_000, "short")).toBe("20 mil");
+    expect(format(2_000, "short")).toBe("2 mil");
+    expect(format(500, "short")).toBe("500");
+    expect(format(2_500_000, "short")).toBe("2,5 mi");
+    expect(format(999_960, "short")).toBe("1 mi");
+    expect(format(5_000_000, "shortbrl")).toBe("R$ 5 bi");
+    expect(format(1_000_000, "shortbrl")).toBe("R$ 1 bi");
+    expect(format(200_000, "shortbrl")).toBe("R$ 200 mi");
   });
 
   it("prints display numbers only with the characters of the display-number font subset", () => {
