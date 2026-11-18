@@ -48,7 +48,7 @@ jobs:
     runs-on: ubuntu-24.04
     # Ceiling for the whole job (GitHub's default is 360 minutes). The network-bound and
     # browser steps carry tighter limits of their own, so a stall fails within minutes.
-    timeout-minutes: 15
+    timeout-minutes: 24
     env:
       # actions/cache and setup-node wait up to 10 minutes on a stalled cache segment by
       # default; give up sooner and carry on as a cache miss.
@@ -107,7 +107,7 @@ jobs:
       # Playwright's globalTimeout (playwright.config.ts) stops the run first, so the
       # report is still printed.
       - name: End-to-end and accessibility tests (Playwright + axe)
-        timeout-minutes: 6
+        timeout-minutes: 10
         run: npm run e2e
 
       # Lighthouse CI runs the runner image's Google Chrome.
@@ -272,7 +272,12 @@ jobs:
         run: |
           npx wrangler versions upload --preview-alias "pr-${PR}" --message "PR #${PR} ${COMMIT}" | tee ../upload.log
           url=$(grep -oE "https://pr-${PR}-[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev" ../upload.log | head -n 1)
-          test -n "$url"
+          # wrangler prints the alias URL only when Cloudflare reports the version's preview:
+          # Preview URLs on for the Worker and the account's workers.dev subdomain active.
+          if [ -z "$url" ]; then
+            echo "::error title=No preview URL::wrangler uploaded the version but reported no Version Preview Alias URL. Check that Preview URLs are enabled for the Worker (Settings > Domains & Routes) and that the account's workers.dev subdomain is active (Workers & Pages > Account details)."
+            exit 1
+          fi
           echo "url=${url}/" >> "$GITHUB_OUTPUT"
 
       - name: Check that the preview answers and stays out of search engines

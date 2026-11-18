@@ -337,11 +337,21 @@ falha ao abrir, em segundos, dizendo qual falta. O Lighthouse CI usa o Google Ch
 própria imagem. O cache dos navegadores foi descartado porque a documentação do
 Playwright não o recomenda: restaurar leva quase o mesmo tempo que baixar. Quanto aos
 limites de tempo: o padrão do GitHub é 360 minutos por job, então cada passo de rede ou
-de navegador ganhou o seu próprio `timeout-minutes` (de 3 a 6 minutos), e o job tem um
-teto de 15. A restauração dos caches desiste de um segmento travado em 2 minutos, em vez
+de navegador ganhou o seu próprio `timeout-minutes` (de 3 a 10 minutos), e o job tem um
+teto de 24. A restauração dos caches desiste de um segmento travado em 2 minutos, em vez
 de 10, e segue como cache miss. O download do pacote de dados aborta em 2 minutos. No
-CI, o Playwright roda com um worker e tem `globalTimeout` de 4 minutos, abaixo do limite
-do passo, para parar sozinho e ainda imprimir o relatório.
+CI, o Playwright roda com um worker e tem `globalTimeout` de 8 minutos, abaixo do limite
+do passo (10), para parar sozinho e ainda imprimir o relatório.
+
+Os limites do Playwright foram revistos em 2026-11-18, porque a suíte cresce a cada etapa.
+O passo levava 90 s no começo da parte A do Explorar e chegou a 135 s com 196 testes,
+deixando ao `globalTimeout` de 4 minutos uma folga de 44%. Localmente, com a máquina
+carregada, ele já tinha estourado duas vezes. O critério é manter folga de pelo menos 50%
+sobre a execução mais lenta no CI. O `globalTimeout` passou a 8 minutos (folga de 72%) e
+o passo a 10, para o Playwright ainda parar antes do GitHub. O job seguiu a regra dos
+outros workflows: cerca de 3 vezes a execução mais lenta, que foi de 477 s, e acima da
+soma dos piores casos dos passos. Por isso passou de 15 a 24 minutos. Os passos do
+Lighthouse (no máximo 164 s contra 6 minutos, folga de 54%) não mudaram.
 
 **Dependências do site: Dependabot e vulnerabilidades atuais.** O Dependabot também
 acompanha o ecossistema npm de `web/`, semanalmente, com o mesmo prefixo de commit das
@@ -905,6 +915,18 @@ o Worker existe: a Cloudflare recusa um `versions upload` antes do primeiro `wra
 deploy`, que acontece no merge do PR da publicação. Por isso a prévia desse primeiro PR
 falha, sem bloquear o merge.
 
+A prévia também depende do subdomínio workers.dev da conta estar ativo. O workers.dev
+desligado no próprio Worker não atrapalha: com `preview_urls: true` explícito, as prévias
+funcionam assim, como diz a documentação. No PR #28, o Worker já existia e o subdomínio já
+estava registrado, mas o certificado dele ainda não respondia: qualquer endereço sob ele,
+inclusive um nome inventado, falhava no aperto de mão do TLS. Sem isso, a Cloudflare não
+informou o endereço da prévia ao `wrangler`, que subiu a versão sem imprimir o "Version
+Preview Alias URL", e o passo do workflow falhou sem explicação. Durante a investigação o
+certificado passou a responder; a mesma execução, rodada de novo sem nenhuma mudança,
+imprimiu os endereços e passou na checagem de 200 e `noindex`. Desde então, quando o
+`wrangler` não informa o endereço, o workflow para com uma mensagem que diz o que conferir
+no painel (as Preview URLs do Worker e o subdomínio da conta).
+
 **Credenciais.** Um token de API da Cloudflare com o mínimo: editar Workers na conta e
 editar as rotas de Workers só na zona atlasdalavoura.com.br (o domínio é declarado no
 `wrangler.jsonc`, revisado em PR como o resto). Ele fica em dois ambientes do GitHub:
@@ -1029,3 +1051,17 @@ O `municipalities.json` (64 KB com gzip) é baixado só quando o ano mostrado é
 **Verificação pede as páginas como um navegador.** O beacon do Web Analytics que a Cloudflare injeta só aparece para pedidos que aceitam HTML, e a verificação pedia as páginas com o `Accept` padrão do Node: só o navegador do fim da verificação o pegou. Agora as páginas são pedidas com os cabeçalhos de um navegador, qualquer script de outra origem reprova a página, e o HTML precisa ter um ETag que responda 304 (a injeção no caminho tira o ETag, e sem ele o navegador baixa a página inteira a cada visita).
 
 **Orçamento.** As correções acrescentaram 1.078 bytes ao Explorar: 654 na primeira rodada e 424 na segunda. No Lighthouse, ele ficou em 714.090 de 716.800 bytes, com folga de cerca de 2,6 KiB. O JavaScript ficou em 94.819 bytes. O Explorar continua congelado até o ciclo de dados com os totais por UF.
+
+## Produto web: faixa de apresentação da página inicial (fase 12)
+
+Um teste com uma pessoa leiga mostrou que a página inicial não dizia o que é o Atlas nem o que dá para fazer nele: ela começava direto pelo achado. Seguindo o modelo do Our World in Data e as diretrizes de página inicial do Nielsen Norman Group (dizer o que é o site e o que se pode fazer nele), uma faixa curta, com o fundo das faixas de destaque, entra entre o cabeçalho e a abertura da análise. Ela tem duas partes:
+- uma frase de apresentação: "O Atlas da Lavoura mostra quanto se produziu de soja, milho e café em cada um dos 5.571 municípios do Brasil, de 1974 a 2025, com dados oficiais do IBGE e, para a soja e o café, o clima de cada dia desde a safra de 1981"; os quatro números vêm do `catalog.json`, pela regra dos números. O clima diz a que culturas se aplica, para não sugerir clima em todo município (regra de validade: só produtores de soja e de café). O ano é o primeiro ano de safra com clima (`parameters.climate_first_harvest_year`), porque o pacote não publica o primeiro dia da série diária (1980, que só serve à janela da safra de 1981);
+- uma linha de ações: "Ver o mapa dos municípios", "Ver o seu estado no mapa" e "Ler a análise: seca e soja".
+
+Das três versões propostas, foi escolhida a que diz o que é, o que cobre e de onde vêm os dados. O subtítulo da abertura repetia a faixa ("A produção agrícola municipal do IBGE desde 1974, cruzada com o clima diário de cada município") e passou a falar só da análise: "O rendimento da soja de cada estado, safra a safra, em relação à tendência, nos anos com e sem seca na floração e no enchimento dos grãos". A versão com o resultado do clima repetiria o título logo abaixo e ficaria perto da linha entre associação e causa. A frase de efeito curta perdia a fonte.
+
+Enquanto a ficha do município está em construção, a segunda ação leva ao Explorar no controle que escolhe a UF (`/explorar/#foco`), e não à busca, para não levar a pessoa leiga a uma página inacabada. Ela volta a ser "Procurar o seu município" quando a página Município ficar pronta. No Explorar, o controle marcado pelo link ganha o fundo da faixa e uma borda mais forte (`:target`), sem imitar o contorno de foco do teclado. O Explorar passou a manter o fragmento da URL ao gravar a visão nela: antes, o `replaceState` descartava o `#foco`, e a marcação dependia de o navegador manter o alvo depois disso.
+
+No computador, a faixa usa duas colunas da grade: a frase à esquerda (colunas 1 a 7, com a medida de leitura) e as três ações à direita (colunas 9 a 12), empilhadas. Na primeira versão, com as ações numa linha abaixo da frase, o lado direito ficava vazio, e a faixa era mais alta. Cada ação é uma linha própria, com seta, área clicável de pelo menos 2 rem, o fundo da página sob o ponteiro e contorno visível no foco do teclado, só com cores da identidade. A seta é desenhada com bordas, porque o caractere da seta não está nos subconjuntos das fontes. A faixa tem 126 px a 1.440 px de largura (147 na primeira versão), e o achado termina a 563 px de altura, dentro da primeira tela a 900 px e também a 768 px. No celular, tudo fica empilhado, com as ações uma por linha, mais fáceis de tocar, e o 73% fica perto do fim da primeira tela, o que foi aceito.
+
+Os testes cobrem o que é contrato e propósito de produto. Cada ação leva ao lugar que promete: o achado, o controle de UF do Explorar (ainda marcado depois que a ilha grava a visão na URL) e o mapa. A faixa fica acima do achado, e o achado continua na primeira tela a 1.440 e 1.280 px. Os números da frase entram no teste de procedência da página. A página inicial ganhou 426 bytes (132.906 no Lighthouse), e o Explorar, 72 (714.162 de 716.800).

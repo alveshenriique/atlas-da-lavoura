@@ -1,6 +1,7 @@
 ---
-// Análise, part A: the finding, the figure, the supporting numbers and the municipality
-// search, laid out after the approved draft (the "combined" version). No data number on
+// Análise, part A: a short band that says what the Atlas is and what one can do in it, then
+// the finding, the figure, the supporting numbers and the municipality search, laid out after
+// the approved draft (the "combined" version). No data number on
 // this page is typed by hand: each one cites its place in the data package
 // (lib/provenance.ts), and e2e/analysis.spec.ts fails on any number that does not.
 import "../styles/analysis.css";
@@ -30,6 +31,9 @@ const meanOther = headline("mean_anomaly_other_years", "spct");
 const regionsPositive = headline("regions_with_positive_correlation", "int");
 const regions = headline("regions_with_correlation", "int");
 const pamFirstYear = sourced("catalog.json", "/series/first_year", "year", "min");
+const pamLastYear = sourced("catalog.json", "/series/last_year", "year", "max");
+const municipalityCount = sourced("catalog.json", "/municipality_count", "int");
+const climateFirstHarvest = sourced("catalog.json", "/parameters/climate_first_harvest_year", "year");
 
 const validation = loadDataFile<MethodJson>("method.json").validation;
 const comparedRow = validation.sidra_scope.category.indexOf("compared");
@@ -84,8 +88,27 @@ const preloads = [
   </Fragment>
 
   <article class="analysis">
+    {/* For someone who arrives knowing nothing: what the Atlas is, and what to do in it. The
+        second action points at the state focus of the map while the municipality page is
+        being built; it becomes the municipality search when that page is done. */}
+    <section class="band intro" aria-label="O que é o Atlas da Lavoura">
+      <div class="container intro__row">
+        <p class="intro__text">
+          O Atlas da Lavoura mostra quanto se produziu de soja, milho e café em cada um dos{" "}
+          <Num n={municipalityCount} /> municípios do Brasil, de <Num n={pamFirstYear} /> a{" "}
+          <Num n={pamLastYear} />, com dados oficiais do IBGE e, para a soja e o café, o clima de cada
+          dia desde a safra de <Num n={climateFirstHarvest} />.
+        </p>
+        <ul class="intro__actions" aria-label="O que você pode fazer">
+          <li><a href="/explorar/">Ver o mapa dos municípios</a></li>
+          <li><a href="/explorar/#foco">Ver o seu estado no mapa</a></li>
+          <li><a href="#achado">Ler a análise: seca e soja</a></li>
+        </ul>
+      </div>
+    </section>
+
     <div class="container">
-      <header class="opening">
+      <header class="opening" id="achado">
         <p class="kicker opening__kicker">
           Análise · Soja e clima, <Num n={firstYear} />–<Num n={lastYear} />
         </p>
@@ -93,8 +116,8 @@ const preloads = [
           {bindShortWords("Quando falta chuva na floração, a soja rende menos")}
         </h1>
         <p class="deck opening__deck">
-          A produção agrícola municipal do IBGE desde <Num n={pamFirstYear} />, cruzada com o
-          clima diário de cada município.
+          O rendimento da soja de cada estado, safra a safra, em relação à tendência, nos anos com
+          e sem seca na floração e no enchimento dos grãos.
         </p>
         <section class="finding opening__finding" aria-label="O achado principal">
           <p class="finding__main"><Num n={hitRate} class="finding__number" /></p>

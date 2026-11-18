@@ -591,3 +591,44 @@ test("the page has no axe violations with every chart visible", async ({ page })
   const results = await new AxeBuilder({ page }).withTags(WCAG).analyze();
   expect(results.violations).toEqual([]);
 });
+
+// For someone who arrives knowing nothing: what the Atlas is and what to do in it, before
+// the finding. Its numbers fall under the provenance test of the page.
+test.describe("the intro band", () => {
+  test("says what the Atlas is and what one can do in it, above the finding", async ({ page }) => {
+    await page.goto("/");
+    const intro = page.getByRole("region", { name: "O que é o Atlas da Lavoura" });
+    await expect(intro).toContainText(
+      /^O Atlas da Lavoura mostra quanto se produziu de soja, milho e café em cada um dos [\d.]+ municípios do Brasil, de \d{4} a \d{4}, com dados oficiais do IBGE e, para a soja e o café, o clima de cada dia desde a safra de \d{4}\./,
+    );
+    await expect(intro.getByRole("list", { name: "O que você pode fazer" }).getByRole("link")).toHaveText([
+      "Ver o mapa dos municípios",
+      "Ver o seu estado no mapa",
+      "Ler a análise: seca e soja",
+    ]);
+    const band = await intro.boundingBox();
+    const opening = await page.locator("#achado").boundingBox();
+    expect((band?.y ?? 0) + (band?.height ?? 0)).toBeLessThanOrEqual(opening?.y ?? 0);
+  });
+
+  test("each action lands where it says", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("link", { name: "Ler a análise: seca e soja" }).click();
+    await expect(page).toHaveURL(/\/#achado$/);
+    await expect(page.locator(".opening__title")).toBeInViewport();
+
+    // The state focus of the map: the link points at the control that chooses the state.
+    await page.goto("/");
+    await page.getByRole("link", { name: "Ver o seu estado no mapa" }).click();
+    await expect(page.locator(".explore__map")).toHaveAttribute("data-ready", "true");
+    // Once the island has written the view into the URL, the fragment is still there.
+    await expect(page).toHaveURL(/\/explorar\/\?serie=soja&medida=producao&ano=2025#foco$/);
+    await expect(page.getByRole("combobox", { name: "Foco" })).toBeInViewport();
+    expect(await page.locator("#foco").evaluate((el) => el.matches(":target"))).toBe(true);
+
+    await page.goto("/");
+    await page.getByRole("link", { name: "Ver o mapa dos municípios" }).click();
+    await expect(page).toHaveURL(/\/explorar\//);
+    await expect(page.locator(".explore__map")).toHaveAttribute("data-ready", "true");
+  });
+});
