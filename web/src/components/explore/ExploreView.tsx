@@ -228,7 +228,8 @@ export default function ExploreView(props: Props) {
   useEffect(() => {
     if (!urlRead) return;
     const search = serializeView(view);
-    if (window.location.search !== search) window.history.replaceState(null, "", search);
+    // The fragment stays (a link to #foco keeps pointing at the choice of state).
+    if (window.location.search !== search) window.history.replaceState(null, "", search + window.location.hash);
     setHref(`${window.location.pathname}${search}`);
   }, [view, urlRead]);
 
@@ -875,7 +876,8 @@ export default function ExploreView(props: Props) {
       <div className="explore__body">
         <section id="figura-1" className="explore__map-column" aria-label="Mapa dos municípios">
           <div className="explore__toolbar">
-            <label className="explore__focus">
+            {/* The target of /explorar/#foco, the home page's "Ver o seu estado no mapa". */}
+            <label className="explore__focus" id="foco">
               <span className="meta">Foco</span>
               <select
                 value={view.uf ?? ""}

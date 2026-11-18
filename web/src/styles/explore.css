@@ -177,6 +177,17 @@
   background: var(--color-band);
 }
 
+/* A link to /explorar/#foco (the home page's "Ver o seu estado no mapa") lands on the choice
+   of state, marked with the band's background and a stronger border. */
+.explore__focus {
+  scroll-margin-top: 1rem;
+}
+
+.explore__focus:target select {
+  background: var(--color-band);
+  border-color: var(--color-text);
+}
+
 /* --- The map: a canvas, a thin highlight layer and the tooltip, all over the same box. --- */
 .explore__map {
   position: relative;

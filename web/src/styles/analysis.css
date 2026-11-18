@@ -2,6 +2,44 @@
    beside the title, the figure, the supporting numbers and the search band. Colours, fonts
    and sizes come from tokens.css. */
 
+/* --- Intro band: one sentence on what the Atlas is and a line of what to do in it, above
+   the opening; short, so the main number stays on the first screen of a computer. On a
+   phone the actions stack (one per line, easy to tap); from 48rem they share one line. --- */
+.intro {
+  padding-block: 0.9rem 1rem;
+}
+
+/* Two lines on a computer: a narrower measure left the last words alone on a third. */
+.intro__text {
+  margin: 0;
+  max-width: 52rem;
+  text-wrap: pretty;
+}
+
+.intro__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+
+@media (min-width: 48rem) {
+  .intro__actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.25rem 0;
+  }
+
+  /* A separator between the actions, left out of what screen readers say. */
+  .intro__actions li + li::before {
+    content: "·" / "";
+    padding-inline: 0.6em;
+    color: var(--color-text-muted);
+  }
+}
+
 /* --- Opening: title and deck on the left eight columns, the main number on the right four,
    at the height of the title. On a phone the order stays: title, deck, number. --- */
 .opening {
