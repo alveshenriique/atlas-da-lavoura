@@ -905,6 +905,18 @@ o Worker existe: a Cloudflare recusa um `versions upload` antes do primeiro `wra
 deploy`, que acontece no merge do PR da publicação. Por isso a prévia desse primeiro PR
 falha, sem bloquear o merge.
 
+A prévia também depende do subdomínio workers.dev da conta estar ativo. O workers.dev
+desligado no próprio Worker não atrapalha: com `preview_urls: true` explícito, as prévias
+funcionam assim, como diz a documentação. No PR #28, o Worker já existia e o subdomínio já
+estava registrado, mas o certificado dele ainda não respondia: qualquer endereço sob ele,
+inclusive um nome inventado, falhava no aperto de mão do TLS. Sem isso, a Cloudflare não
+informou o endereço da prévia ao `wrangler`, que subiu a versão sem imprimir o "Version
+Preview Alias URL", e o passo do workflow falhou sem explicação. Durante a investigação o
+certificado passou a responder; a mesma execução, rodada de novo sem nenhuma mudança,
+imprimiu os endereços e passou na checagem de 200 e `noindex`. Desde então, quando o
+`wrangler` não informa o endereço, o workflow para com uma mensagem que diz o que conferir
+no painel (as Preview URLs do Worker e o subdomínio da conta).
+
 **Credenciais.** Um token de API da Cloudflare com o mínimo: editar Workers na conta e
 editar as rotas de Workers só na zona atlasdalavoura.com.br (o domínio é declarado no
 `wrangler.jsonc`, revisado em PR como o resto). Ele fica em dois ambientes do GitHub:
@@ -1029,3 +1041,17 @@ O `municipalities.json` (64 KB com gzip) é baixado só quando o ano mostrado é
 **Verificação pede as páginas como um navegador.** O beacon do Web Analytics que a Cloudflare injeta só aparece para pedidos que aceitam HTML, e a verificação pedia as páginas com o `Accept` padrão do Node: só o navegador do fim da verificação o pegou. Agora as páginas são pedidas com os cabeçalhos de um navegador, qualquer script de outra origem reprova a página, e o HTML precisa ter um ETag que responda 304 (a injeção no caminho tira o ETag, e sem ele o navegador baixa a página inteira a cada visita).
 
 **Orçamento.** As correções acrescentaram 1.078 bytes ao Explorar: 654 na primeira rodada e 424 na segunda. No Lighthouse, ele ficou em 714.090 de 716.800 bytes, com folga de cerca de 2,6 KiB. O JavaScript ficou em 94.819 bytes. O Explorar continua congelado até o ciclo de dados com os totais por UF.
+
+## Produto web: faixa de apresentação da página inicial (fase 12)
+
+Um teste com uma pessoa leiga mostrou que a página inicial não dizia o que é o Atlas nem o que dá para fazer nele: ela começava direto pelo achado. Seguindo o modelo do Our World in Data e as diretrizes de página inicial do Nielsen Norman Group (dizer o que é o site e o que se pode fazer nele), uma faixa curta, com o fundo das faixas de destaque, entra entre o cabeçalho e a abertura da análise. Ela tem duas partes:
+- uma frase de apresentação: "O Atlas da Lavoura mostra quanto se produziu de soja, milho e café em cada um dos 5.571 municípios do Brasil, de 1974 a 2025, com dados oficiais do IBGE e, para a soja e o café, o clima de cada dia desde a safra de 1981"; os quatro números vêm do `catalog.json`, pela regra dos números. O clima diz a que culturas se aplica, para não sugerir clima em todo município (regra de validade: só produtores de soja e de café). O ano é o primeiro ano de safra com clima (`parameters.climate_first_harvest_year`), porque o pacote não publica o primeiro dia da série diária (1980, que só serve à janela da safra de 1981);
+- uma linha de ações: "Ver o mapa dos municípios", "Ver o seu estado no mapa" e "Ler a análise: seca e soja".
+
+Das três versões propostas, foi escolhida a que diz o que é, o que cobre e de onde vêm os dados. O subtítulo da abertura repetia a faixa ("A produção agrícola municipal do IBGE desde 1974, cruzada com o clima diário de cada município") e passou a falar só da análise: "O rendimento da soja de cada estado, safra a safra, em relação à tendência, nos anos com e sem seca na floração e no enchimento dos grãos". A versão com o resultado do clima repetiria o título logo abaixo e ficaria perto da linha entre associação e causa. A frase de efeito curta perdia a fonte.
+
+Enquanto a ficha do município está em construção, a segunda ação leva ao Explorar no controle que escolhe a UF (`/explorar/#foco`), e não à busca, para não levar a pessoa leiga a uma página inacabada. Ela volta a ser "Procurar o seu município" quando a página Município ficar pronta. No Explorar, o controle marcado pelo link ganha o fundo da faixa e uma borda mais forte (`:target`), sem imitar o contorno de foco do teclado. O Explorar passou a manter o fragmento da URL ao gravar a visão nela: antes, o `replaceState` descartava o `#foco`, e a marcação dependia de o navegador manter o alvo depois disso.
+
+No computador, a faixa ocupa até três linhas de texto e uma de ações (147 px a 1.440 px de largura), e o achado termina a 584 px de altura, dentro da primeira tela a 900 px e também a 768 px. No celular, as ações ficam uma por linha, mais fáceis de tocar, e o 73% fica perto do fim da primeira tela, o que foi aceito.
+
+Os testes cobrem o que é contrato e propósito de produto. Cada ação leva ao lugar que promete: o achado, o controle de UF do Explorar (ainda marcado depois que a ilha grava a visão na URL) e o mapa. A faixa fica acima do achado, e o achado continua na primeira tela a 1.440 e 1.280 px. Os números da frase entram no teste de procedência da página. A página inicial ganhou 309 bytes (132.789 no Lighthouse), e o Explorar, 72 (714.162 de 716.800).
