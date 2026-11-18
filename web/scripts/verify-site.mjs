@@ -7,9 +7,12 @@
 //   address answers 404 with the site's page;
 // - robots.txt is, byte for byte, the one the build writes (lib/site-pages.ts), so nothing
 //   added on the way, such as a CDN's managed robots.txt, goes unnoticed;
-// - every page carries the security headers, and every inline script of the HTML that
-//   Cloudflare actually serves is allowed by the CSP (catches scripts injected on the way,
-//   such as email obfuscation or Rocket Loader); data and bundles are immutable, HTML is not;
+// - every page carries the security headers, and every script of the HTML that Cloudflare
+//   actually serves to a browser is allowed by the CSP: each inline one hashed, none from
+//   another origin. The pages are asked for as a browser asks (Accept: text/html), because
+//   Cloudflare injects scripts (the Web Analytics beacon, email obfuscation, Rocket Loader)
+//   only into responses for browsers; data and bundles are immutable, and HTML is always
+//   revalidated, with an ETag that answers 304 (an injection on the way drops it);
 // - in a real browser, the Análise and the Explorar (map drawn) run without a single CSP
 //   violation or page error;
 // - the dbt docs answer over HTTPS (--docs).
@@ -31,6 +34,11 @@ const origin = site.origin;
 const host = site.hostname;
 const pointer = JSON.parse(readFileSync(new URL("../../data-release.json", import.meta.url), "utf8"));
 const PAGES = ["/", "/explorar/", "/municipios/", "/metodo/", "/municipio/5107925/"];
+// The page requests look like a browser's: injections on the way happen only for these.
+const AS_BROWSER = {
+  accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0 Safari/537.36",
+};
 const results = [];
 
 function check(name, ok, detail = "") {
@@ -102,7 +110,7 @@ for (const name of [host, `www.${host}`, ...(docs ? [new URL(docs).hostname] : [
 
 // --- pages and their headers ---
 for (const path of PAGES) await guarded(`${path} answers`, async () => {
-  const response = await get(`${origin}${path}`);
+  const response = await get(`${origin}${path}`, { headers: AS_BROWSER });
   const h = response.headers;
   const html = await response.text();
   check(`${path} answers 200`, response.status === 200, String(response.status));
@@ -113,7 +121,7 @@ for (const path of PAGES) await guarded(`${path} answers`, async () => {
   check(`${path} script-src is 'self' and hashes only`, strict, `${scriptSrc.length - 1} hashes`);
   const blocks = inlineBlocks(html);
   const unlisted = blocks.scripts.map(hashSource).filter((hash) => !allowed.has(hash));
-  check(`${path} every inline script is in the CSP`, unlisted.length === 0 && blocks.problems.length === 0, [...unlisted, ...blocks.problems].join(", "));
+  check(`${path} every script is allowed by the CSP (inline hashed, none from another origin)`, unlisted.length === 0 && blocks.problems.length === 0, [...unlisted, ...blocks.problems].join(", "));
   check(`${path} frame-ancestors 'none'`, (csp.get("frame-ancestors") ?? []).join(" ") === "'none'");
   check(`${path} HSTS with includeSubDomains`, /^max-age=[1-9]\d*; includeSubDomains/.test(h.get("strict-transport-security") ?? ""), h.get("strict-transport-security") ?? "missing");
   check(`${path} nosniff, referrer, permissions, frame options`,
@@ -122,13 +130,16 @@ for (const path of PAGES) await guarded(`${path} answers`, async () => {
       (h.get("permissions-policy") ?? "").includes("camera=()") &&
       h.get("x-frame-options") === "DENY");
   check(`${path} HTML is always revalidated`, h.get("cache-control") === CACHE.html, h.get("cache-control") ?? "missing");
+  const etag = h.get("etag");
+  const again = etag ? await get(`${origin}${path}`, { headers: { ...AS_BROWSER, "if-none-match": etag } }) : null;
+  check(`${path} HTML has an ETag that answers 304`, again?.status === 304, etag ? `${again?.status}` : "no ETag");
 });
 
 // --- files ---
 await guarded("files answer", async () => {
 const data = await get(`${origin}/data/${pointer.data_version}/catalog.json`);
 check("versioned data is immutable", data.status === 200 && data.headers.get("cache-control") === CACHE.immutable, `${data.status} ${data.headers.get("cache-control")}`);
-const explore = await (await get(`${origin}/explorar/`)).text();
+const explore = await (await get(`${origin}/explorar/`, { headers: AS_BROWSER })).text();
 const bundle = /\/_astro\/[^"']+\.(?:js|css)/.exec(explore)?.[0];
 const bundled = bundle ? await get(`${origin}${bundle}`) : undefined;
 check("hashed bundles are immutable", bundled?.status === 200 && bundled.headers.get("cache-control") === CACHE.immutable, bundle ?? "no bundle found");
