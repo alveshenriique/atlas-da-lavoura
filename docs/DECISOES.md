@@ -269,8 +269,9 @@ medido). Alternativas descartadas: Next.js com exportação estática (174 KB gz
 JavaScript de base medidos num "hello world", e rotas dinâmicas exigem
 `generateStaticParams` com os 5.571 municípios) e React + Vite puro (69 KB de runtime
 também nas páginas de texto, que chegariam vazias antes da hidratação). O
-`@astrojs/react` está fixado em 7.1.4: a 7.1.6 importa um módulo que não existe no
-astro 7.4.
+`@astrojs/react` fica fixado numa versão exata, hoje a 7.1.9 (com o astro 7.4.12,
+desde 2026-11-18): a 7.1.6 importava um módulo que não existe no astro 7.4, então cada
+atualização dele só entra depois de passar no build e nos testes.
 
 **Mapa: canvas 2D com d3-geo (decidido; implementação na próxima etapa).** O stack
 d3-geo + topojson-client + d3-zoom + d3-selection + d3-delaunay mede ~42 KB gzip, contra
@@ -862,7 +863,7 @@ as diretivas mais específicas e ignoram essa linha.
 **Hospedagem e deploy.** O site é um Worker da Cloudflare só com arquivos estáticos, sem
 código próprio (`web/wrangler.jsonc`): cada resposta é um arquivo de `dist/` com os
 cabeçalhos de `dist/_headers`, e as requisições a arquivos estáticos são gratuitas e sem
-limite no plano Free (o limite de 20.000 arquivos por versão está longe: são 6.189). O deploy
+limite no plano Free (o limite de 20.000 arquivos por versão está longe: são 6.195). O deploy
 é um job do `site.yml` que roda em push na `main`, depois do job `site`, e publica o
 artefato que esse job acabou de construir e testar (os mesmos bytes, não um build novo). O CI
 de Python e dbt não entra na dependência: a regra da `main` já exige os três checks verdes no
@@ -880,7 +881,10 @@ roda no evento `pull_request`, e não `pull_request_target`, que daria o token a
 de forks; nos PRs do Dependabot e de forks, que não recebem o token, ele é pulado pela
 condição do job, e não falha. Não é check obrigatório. As prévias são públicas, mas levam
 `X-Robots-Tag: noindex` por uma regra do `_headers` que vale só para os hosts do
-`workers.dev`, conferida pelo próprio job depois do upload.
+`workers.dev`, conferida pelo próprio job depois do upload. A prévia só funciona depois que
+o Worker existe: a Cloudflare recusa um `versions upload` antes do primeiro `wrangler
+deploy`, que acontece no merge do PR da publicação. Por isso a prévia desse primeiro PR
+falha, sem bloquear o merge.
 
 **Credenciais.** Um token de API da Cloudflare com o mínimo: editar Workers na conta e
 editar as rotas de Workers só na zona atlasdalavoura.com.br (o domínio é declarado no
@@ -924,11 +928,52 @@ os certificados valem por mais 14 dias, as páginas, o robots, o sitemap e a ima
 a 404 responde 404, cada página traz os cabeçalhos de segurança e de cache, e cada script
 embutido do HTML que a Cloudflare de fato entrega está na CSP. Essa última checagem pega um
 script injetado no caminho (ofuscação de e-mail, Rocket Loader, análise automática), que a CSP
-bloquearia e quebraria a página. Por fim, um navegador abre a Análise e o Explorar e exige zero
-violações e zero erros.
+bloquearia e quebraria a página. O `robots.txt` servido também é comparado byte a byte com
+o que o build gera (`robotsTxt()` em `web/src/lib/site-pages.ts`), o que pega um bloco
+acrescentado no caminho, como o `robots.txt` gerenciado da Cloudflare. Por fim, um navegador
+abre a Análise e o Explorar e exige zero violações e zero erros.
 
 **HSTS.** Começa com um dia (`max-age=86400; includeSubDomains`) e sobe para um ano depois
 de uma semana de verificações verdes. O `includeSubDomains` exige HTTPS em todo subdomínio, o
 que vale para o www (redirecionado pela Cloudflare) e para o dbt docs (GitHub Pages com HTTPS
 obrigatório). O preload fica para uma decisão separada, porque sair da lista dos navegadores
 leva meses.
+
+**Domínio, DNS e DNSSEC.** O domínio atlasdalavoura.com.br continua registrado no
+registro.br, mas o DNS passou para a Cloudflare (2026-11-17): o domínio próprio de um Worker
+só existe numa zona da Cloudflare, e o apex não aceita CNAME para um host de fora. A troca
+seguiu a ordem que não quebra a validação: o registro.br retirou o DS antigo antes de
+delegar aos servidores da Cloudflare (cerca de duas horas depois); com a delegação ativa, a
+Cloudflare passou a assinar a zona (algoritmo 13), o DS foi recalculado a partir da chave
+publicada e conferido campo a campo contra o do painel, e só então cadastrado no registro.br.
+Manter o DS antigo durante a troca faria os resolvedores que validam DNSSEC recusarem o
+domínio, porque a chave nova não bateria com ele. Resultado conferido com `dig` e `delv` nos
+resolvedores públicos: respostas com o selo `ad`, "fully validated". O domínio não envia
+e-mail, e a zona diz isso: MX nulo, SPF `-all` e DMARC `p=reject`, o que impede o uso do
+nome em e-mails forjados.
+
+**Ajustes da zona.** HTTPS obrigatório e TLS 1.2 no mínimo. Ficam desligados os recursos
+que alteram o HTML no caminho ou injetam scripts, que a CSP bloquearia: ofuscação de e-mail,
+Rocket Loader, Bot Fight Mode (injeta detecções em JavaScript que não podem ser desligadas),
+AI Labyrinth e a análise automática do Web Analytics. O Bot Preference Sync também fica
+desligado: com qualquer política de robôs de IA em bloqueio, ele acrescenta um bloco ao
+nosso `robots.txt`, e o arquivo publicado deixaria de ser o versionado e testado. As
+políticas de IA estão em permitir; recusar o uso para treino, se um dia fizer sentido, é uma
+decisão de conteúdo e entra no próprio `robots.txt`.
+
+**www.** O `www` é um registro `AAAA` para `100::` (endereço reservado para descarte) com o
+proxy da Cloudflare, e uma regra de redirecionamento responde na borda, antes de qualquer
+origem: `301` para `https://atlasdalavoura.com.br` com o mesmo caminho e a mesma query, por
+`http` e por `https`, num salto só. O modelo pronto de "www para o domínio" foi descartado
+por uma regra com expressão própria, que cobre os dois esquemas e não depende de padrão
+curinga.
+
+**dbt docs em docs.atlasdalavoura.com.br.** O dbt docs continua no GitHub Pages, publicado
+pelo `docs.yml`, agora com o domínio do projeto. O domínio foi verificado na conta do GitHub
+(registro TXT de desafio, mantido na zona), o que impede outra conta de publicar um site do
+Pages em qualquer subdomínio dele. O `docs` é um CNAME para `alveshenriique.github.io` sem o
+proxy da Cloudflare: o GitHub só emite o certificado (Let's Encrypt, renovado por ele) se o
+nome apontar direto para os seus servidores, e a verificação depois do deploy confere esse
+certificado. HTTPS obrigatório no Pages, e o endereço antigo
+(`alveshenriique.github.io/atlas-da-lavoura/`) redireciona para o novo. Como o Pages é
+publicado por workflow, o domínio fica nas configurações do repositório, sem arquivo `CNAME`.
