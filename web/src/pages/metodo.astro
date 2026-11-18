@@ -1,7 +1,9 @@
 ---
 import Num from "../components/Num.astro";
+import UnderConstruction from "../components/UnderConstruction.astro";
 import Base from "../layouts/Base.astro";
 import { fullCitations } from "../lib/citations";
+import { DBT_DOCS_URL } from "../lib/site-pages";
 import { sourced } from "../lib/sourced";
 import { bindShortWords } from "../lib/typography";
 
@@ -14,16 +16,18 @@ const citations = fullCitations();
   title="Método"
   description="Como o Atlas da Lavoura é feito: pipeline, validação externa, registro de correções e as fontes dos dados."
 >
+  <UnderConstruction>
+    <p>
+      Esta página vai reunir o pipeline, a validação externa e o registro de correções. Por
+      enquanto, ela traz as fontes e as citações; a metodologia completa está na <a
+        href="https://github.com/alveshenriique/atlas-da-lavoura/blob/main/docs/METODOLOGIA.md"
+        >documentação do projeto</a
+      >, e a descrição de cada tabela e coluna, na <a href={DBT_DOCS_URL}>documentação do dbt</a>.
+    </p>
+  </UnderConstruction>
   <div class="container grid">
     <div class="col-text">
       <h1 class="page-title">Método</h1>
-      <p class="placeholder">
-        Esta página descreverá o pipeline, a validação e o registro de correções. Em construção;
-        enquanto isso, a metodologia completa está na <a
-          href="https://github.com/alveshenriique/atlas-da-lavoura/blob/main/docs/METODOLOGIA.md"
-          >documentação do projeto</a
-        >.
-      </p>
       <p class="placeholder">
         Versão dos dados <Num n={version} />, gerada em <Num n={generated} />.
       </p>

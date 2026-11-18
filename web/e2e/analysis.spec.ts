@@ -2,7 +2,7 @@
 // Playwright projects). The provenance tests are the page's main rule: no number typed by
 // hand, every one read from the data package.
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "./test";
 
 import { tokens } from "../src/lib/tokens";
 import { findUnsourcedNumbers } from "./provenance";
@@ -114,10 +114,14 @@ test.describe("numbers come from the data package", () => {
           '<ol data-structural="list" start="537"><li>item</li></ol>',
           // a numbered list without the structural mark
           "<ol><li>item</li></ol>",
-          // a number in CSS-generated content
-          '<style>.disguise::before { content: "−9%"; }</style><p class="disguise"></p>',
+          // a number in CSS-generated content (the rule is added below through the CSSOM: the
+          // site's Content-Security-Policy refuses an injected <style> element)
+          '<p class="disguise"></p>',
         ].join(""),
       );
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync('.disguise::before { content: "−9%"; }');
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
     });
     const problems = (await findUnsourcedNumbers(page, request)).map((issue) => issue.problem);
     expect(problems).toEqual(

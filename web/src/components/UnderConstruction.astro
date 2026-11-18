@@ -1,0 +1,47 @@
+---
+// The honest notice of a page that is not finished yet: what is missing and where to look in
+// the meantime. Pages listed as under construction in lib/site-pages.ts show it right under
+// the header, in a band of its own, and carry noindex until they are finished.
+---
+
+<aside class="construction band" aria-label="Página em construção">
+  <div class="container construction__row">
+    <p class="construction__label kicker">Em construção</p>
+    <div class="construction__text">
+      <slot />
+    </div>
+  </div>
+</aside>
+
+<style>
+  .construction {
+    border-bottom: 1px solid var(--color-grid);
+  }
+
+  .construction__row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 1.5rem;
+    padding-block: 0.9rem;
+  }
+
+  .construction__label {
+    margin: 0;
+    color: var(--color-text);
+  }
+
+  .construction__text {
+    flex: 1 1 28rem;
+    max-width: var(--measure);
+    color: var(--color-text-secondary);
+  }
+
+  .construction__text :global(p) {
+    margin: 0;
+  }
+
+  .construction__text :global(a) {
+    color: var(--color-text);
+  }
+</style>

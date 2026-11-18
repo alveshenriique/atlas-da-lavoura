@@ -1,0 +1,48 @@
+---
+// The page Cloudflare serves, with status 404, for any address that is not a file of the
+// site (wrangler.jsonc: not_found_handling = "404-page"). Every link and asset is absolute,
+// because it answers at any path. Not indexed (lib/site-pages.ts).
+import MunicipalitySearch from "../components/MunicipalitySearch.astro";
+import Base from "../layouts/Base.astro";
+---
+
+<Base
+  title="Página não encontrada"
+  description="O endereço procurado não existe no Atlas da Lavoura."
+>
+  <div class="container grid not-found">
+    <div class="col-text">
+      <p class="kicker">Página não encontrada</p>
+      <h1 class="page-title">Este endereço não existe no Atlas da Lavoura</h1>
+      <p class="not-found__lead">
+        O link pode estar incompleto ou ter mudado. Estes são os caminhos principais do site:
+      </p>
+      <ul class="not-found__links">
+        <li><a href="/">Análise</a>: a seca na floração e o rendimento da soja.</li>
+        <li><a href="/explorar/">Explorar</a>: o mapa dos municípios, ano a ano.</li>
+        <li><a href="/metodo/">Método</a>: as fontes e como os dados foram tratados.</li>
+      </ul>
+    </div>
+  </div>
+  <MunicipalitySearch />
+</Base>
+
+<style>
+  .not-found {
+    padding-block: 2.5rem 1rem;
+  }
+
+  .not-found__lead {
+    margin: 1rem 0 0.5rem;
+    color: var(--color-text-secondary);
+  }
+
+  .not-found__links {
+    margin: 0 0 2rem;
+    padding-left: 1.1rem;
+  }
+
+  .not-found__links li + li {
+    margin-top: 0.35rem;
+  }
+</style>

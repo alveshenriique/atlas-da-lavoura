@@ -11,6 +11,12 @@ public/data/
 # Types generated from the JSON Schemas by scripts/generate-types.mjs.
 src/types/data/
 
+# Build with the internal /og/ page, used only by npm run og-image.
+.og-build/
+
+# Local state of `wrangler dev`.
+.wrangler/
+
 # Test output
 test-results/
 playwright-report/

@@ -3,7 +3,7 @@
 // (data-view, data-counts, data-active-id, data-transition), which no reader sees and the
 // number check ignores; the numbers people see are checked against the data package.
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Locator, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "./test";
 
 import { MIN_YIELD_AREA_HA } from "../src/lib/classify";
 import { CIRCLE_MAX_RADIUS, circleScale } from "../src/lib/symbols";

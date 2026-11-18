@@ -1,0 +1,197 @@
+---
+// The link preview image (Open Graph, 1200 × 630), drawn by the site's own components: the
+// finding of the Análise and its main chart, with the same numbers, sourced from the data
+// package. This page exists only when ATLAS_OG=1 (npm run og-image, which renders it with
+// Playwright, checks the provenance of every number and saves public/og/<name>.png); the
+// published build has no /og/ page, only the image.
+import "../../styles/fonts.css";
+import "../../styles/tokens.css";
+import "../../styles/global.css";
+import "../../styles/analysis.css";
+
+import { scaleLinear } from "d3-scale";
+
+import AnomalyBars, { type TickLabel } from "../../components/charts/AnomalyBars";
+import Num from "../../components/Num.astro";
+import { analysisModel, BAR_COLUMNS, TABLE, worstYears } from "../../lib/analysis";
+import { dataBasePath } from "../../lib/data";
+import { sourced, tick } from "../../lib/sourced";
+import { bindShortWords } from "../../lib/typography";
+
+export function getStaticPaths() {
+  return process.env.ATLAS_OG === "1" ? [{ params: { name: "atlas-da-lavoura" } }] : [];
+}
+
+const model = analysisModel();
+const years: [number, number] = [model.firstYear, model.lastYear];
+const headline = (field: string, fmt: "pct" | "int" | "year") =>
+  sourced("analysis.json", `/headline/${field}`, fmt);
+const hitRate = headline("below_trend_share_water_deficit_years", "pct");
+const deficitYears = headline("water_deficit_state_years", "int");
+const first = headline("first_year", "year");
+const last = headline("last_year", "year");
+const asTick = (value: number): TickLabel => {
+  const t = tick("analysis.json", "/climate_yield_by_state/yield_anomaly", "spct", "within", value);
+  return { value, text: t.text, src: t.src, carried: t.carried };
+};
+const yTicks = scaleLinear()
+  .domain(model.extent)
+  .ticks(4)
+  .filter((v) => v >= model.extent[0] && v <= model.extent[1])
+  .map(asTick);
+---
+
+<!doctype html>
+<html lang="pt-BR" data-data-base={`${dataBasePath}/`}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="robots" content="noindex" />
+    <title>Atlas da Lavoura</title>
+  </head>
+  <body class="og">
+    <main class="og__card">
+      <div class="og__text">
+        <p class="og__brand">Atlas da Lavoura</p>
+        <h1 class="og__title">{bindShortWords("Quando falta chuva na floração, a soja rende menos")}</h1>
+        <p class="og__finding">
+          <Num n={hitRate} class="og__number" />
+          <span class="og__sentence">
+            das <Num n={deficitYears} /> safras estaduais com {model.deficitLabel} ficaram abaixo da
+            tendência de rendimento.
+          </span>
+        </p>
+        <p class="og__foot">atlasdalavoura.com.br · IBGE e BR-DWGD</p>
+      </div>
+      <figure class="og__figure">
+        <figcaption class="og__caption">
+          Rendimento da soja no {model.focus.name} em relação à tendência, <Num n={first} />–<Num
+            n={last}
+          />
+        </figcaption>
+        <ul class="legend og__legend">
+          <li>
+            <span class="legend__swatch legend__swatch--deficit" aria-hidden="true"></span>
+            {model.deficitLabel}
+          </li>
+          <li>
+            <span class="legend__swatch legend__swatch--other" aria-hidden="true"></span>
+            demais anos
+          </li>
+        </ul>
+        <div class="figure__focus og__chart">
+          <AnomalyBars
+            label={`${model.focus.name}: rendimento da soja em relação à tendência, por safra.`}
+            bars={model.focus.bars}
+            missingYears={model.focus.missingYears}
+            years={years}
+            extent={model.extent}
+            deficitLabel={model.deficitLabel}
+            table={TABLE}
+            cols={BAR_COLUMNS}
+            variant="focus"
+            yTicks={yTicks}
+            annotate={worstYears(model.focus, 3)}
+          />
+        </div>
+      </figure>
+    </main>
+  </body>
+</html>
+
+<style is:global>
+  html,
+  body.og {
+    width: 1200px;
+    height: 630px;
+    margin: 0;
+    overflow: hidden;
+    background: var(--color-background);
+    color: var(--color-text);
+  }
+
+  .og__card {
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: 430px 1fr;
+    gap: 48px;
+    width: 1200px;
+    height: 630px;
+    padding: 56px 64px 48px;
+    border-top: 10px solid var(--color-dry);
+  }
+
+  .og__text {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .og__brand {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-feature-settings: var(--font-mono-features);
+    font-size: 18px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .og__title {
+    margin: 28px 0 0;
+    font-family: var(--font-serif);
+    font-weight: 400;
+    font-size: 46px;
+    line-height: 1.12;
+  }
+
+  .og__finding {
+    margin: 32px 0 0;
+    padding-top: 14px;
+    border-top: 2px solid var(--color-dry);
+  }
+
+  .og__number {
+    display: block;
+    font-family: var(--font-display-number);
+    font-feature-settings: normal;
+    font-weight: var(--font-display-number-weight);
+    font-size: 96px;
+    line-height: 1;
+    letter-spacing: -0.03em;
+    color: var(--color-dry);
+  }
+
+  .og__sentence {
+    display: block;
+    margin-top: 10px;
+    font-size: 21px;
+    line-height: 1.35;
+  }
+
+  .og__foot {
+    margin: auto 0 0;
+    font-family: var(--font-mono);
+    font-feature-settings: var(--font-mono-features);
+    font-size: 16px;
+    color: var(--color-text-secondary);
+  }
+
+  .og__figure {
+    display: flex;
+    flex-direction: column;
+    margin: 6px 0 0;
+  }
+
+  .og__caption {
+    font-size: 20px;
+    line-height: 1.3;
+  }
+
+  .og__legend {
+    margin: 10px 0 18px;
+    font-size: 16px;
+  }
+
+  .og__chart {
+    flex: 1;
+    font-size: 15px;
+  }
+</style>

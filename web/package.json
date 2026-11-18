@@ -10,12 +10,13 @@
     "setup": "npm run fetch-data && npm run generate-types && npm run validate-data",
     "dev": "astro dev",
     "check": "astro check",
-    "build": "astro build",
+    "build": "astro build && node scripts/make-headers.mjs dist",
     "preview": "astro preview",
     "test": "vitest run",
     "e2e": "playwright test",
     "lhci:desktop": "lhci autorun --config=lighthouserc.desktop.json",
-    "lhci:mobile": "lhci autorun --config=lighthouserc.mobile.json"
+    "lhci:mobile": "lhci autorun --config=lighthouserc.mobile.json",
+    "og-image": "playwright test --config playwright.og.config.ts"
   },
   "dependencies": {
     "@astrojs/react": "7.1.9",
@@ -46,6 +47,7 @@
     "jsdom": "^31.0.1",
     "json-schema-to-typescript": "^16.0.0",
     "typescript": "^6.0.3",
-    "vitest": "^5.1.0"
+    "vitest": "^5.1.0",
+    "wrangler": "4.156.2"
   }
 }

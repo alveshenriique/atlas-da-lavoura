@@ -269,8 +269,9 @@ medido). Alternativas descartadas: Next.js com exportação estática (174 KB gz
 JavaScript de base medidos num "hello world", e rotas dinâmicas exigem
 `generateStaticParams` com os 5.571 municípios) e React + Vite puro (69 KB de runtime
 também nas páginas de texto, que chegariam vazias antes da hidratação). O
-`@astrojs/react` está fixado em 7.1.4: a 7.1.6 importa um módulo que não existe no
-astro 7.4.
+`@astrojs/react` fica fixado numa versão exata, hoje a 7.1.9 (com o astro 7.4.12,
+desde 2026-11-18): a 7.1.6 importava um módulo que não existe no astro 7.4, então cada
+atualização dele só entra depois de passar no build e nos testes.
 
 **Mapa: canvas 2D com d3-geo (decidido; implementação na próxima etapa).** O stack
 d3-geo + topojson-client + d3-zoom + d3-selection + d3-delaunay mede ~42 KB gzip, contra
@@ -823,3 +824,156 @@ recorte da fonte. Sobram cerca de 3,9 KiB, e nada novo entra no Explorar até o 
 dados com os totais por UF. Desempenho de 1,00 no computador; no celular, de 0,98 a 0,99 com
 a máquina livre e de 0,96 a 0,97 com ela carregada (`benchmarkIndex` de cerca de 1.600, em
 vez de 2.200).
+
+## Publicação do site (fase 12)
+
+**Content-Security-Policy: scripts sem `unsafe-inline`, e a concessão do
+`style-src-attr 'unsafe-inline'`.** A política vai num cabeçalho HTTP, gerado no build a
+partir do próprio HTML publicado, e vale para todas as páginas. Os scripts continuam
+bloqueados sem `unsafe-inline`: `script-src` aceita só os arquivos do próprio site
+(`'self'`) e o hash sha256 de cada script embutido que o build produz (6 no build atual, na
+Análise e no Explorar). Não há `unsafe-inline` nem `unsafe-eval` para scripts, e, sem
+`script-src-attr`, atributos de evento como `onclick` também são recusados. Um `<script>` ou
+um atributo de evento injetado na página não roda. Os elementos de estilo seguem a mesma
+regra: `style-src-elem` aceita as folhas de estilo do site e o hash do único bloco `<style>`
+embutido.
+
+A exceção são os atributos `style`: `style-src-attr 'unsafe-inline'`. O motivo é que os
+gráficos posicionam barras, rótulos e marcas com atributos `style` gerados no build e pelo
+React (696 atributos na Análise e no Explorar, com posições e larguras em porcentagem que
+mudam a cada pacote de dados). A alternativa dentro do CSP seria `'unsafe-hashes'` com um
+hash por valor distinto: centenas de hashes, acima do limite de 2.000 caracteres por linha
+do arquivo de cabeçalhos da Cloudflare, e mudando a cada atualização dos dados. Um nonce não
+serve a um site estático, porque exige um servidor que gere um valor novo a cada resposta.
+Reescrever os gráficos para posicionar tudo com atributos de SVG, que o CSP não restringe, é
+possível, mas é uma reforma à parte, registrada aqui como evolução futura.
+
+O risco aceito é o de injeção de CSS por atributo: quem conseguisse injetar HTML na página
+poderia mudar a aparência de elementos (esconder, sobrepor ou deslocar conteúdo). Ele é
+limitado por três fatos. Primeiro, não há vetor conhecido de injeção: o site não tem
+entrada de usuário refletida no HTML, nem conteúdo de terceiros, e todos os textos vêm do
+build e do pacote de dados próprio. Segundo, um atributo `style` não executa código nem lê
+dados da página (a exfiltração por seletores de CSS exigiria um bloco `<style>`, que continua
+bloqueado). Terceiro, `img-src`, `font-src` e `connect-src` só aceitam o próprio site, então
+um `url(...)` num atributo não consegue levar dados para outro servidor. Para navegadores
+antigos, sem suporte às diretivas `-elem` e `-attr` (Safari antes do 15.4 e Firefox antes do
+108), `style-src` traz `'self' 'unsafe-inline'` como alternativa; os navegadores atuais usam
+as diretivas mais específicas e ignoram essa linha.
+
+**Hospedagem e deploy.** O site é um Worker da Cloudflare só com arquivos estáticos, sem
+código próprio (`web/wrangler.jsonc`): cada resposta é um arquivo de `dist/` com os
+cabeçalhos de `dist/_headers`, e as requisições a arquivos estáticos são gratuitas e sem
+limite no plano Free (o limite de 20.000 arquivos por versão está longe: são 6.195). O deploy
+é um job do `site.yml` que roda em push na `main`, depois do job `site`, e publica o
+artefato que esse job acabou de construir e testar (os mesmos bytes, não um build novo). O CI
+de Python e dbt não entra na dependência: a regra da `main` já exige os três checks verdes no
+PR, e esperar outro workflow com `workflow_run` complicaria sem ganho. Um deploy por vez
+(`concurrency` sem cancelamento), o `wrangler` fixado na versão exata do lockfile e sem
+telemetria. Desfazer é `wrangler rollback` ou o botão de rollback do painel, em segundos.
+Alternativas descartadas: Cloudflare Pages, que a Cloudflare passou a direcionar para os
+Workers com static assets; e o build na própria Cloudflare, que publicaria um build diferente
+do que os testes viram.
+
+**Prévias por PR.** Cada PR deste repositório ganha uma versão de prévia
+(`wrangler versions upload --preview-alias pr-<número>`), em
+`pr-<número>-atlas-da-lavoura.<conta>.workers.dev`, sem tocar na versão de produção. O job
+roda no evento `pull_request`, e não `pull_request_target`, que daria o token a código vindo
+de forks; nos PRs do Dependabot e de forks, que não recebem o token, ele é pulado pela
+condição do job, e não falha. Não é check obrigatório. As prévias são públicas, mas levam
+`X-Robots-Tag: noindex` por uma regra do `_headers` que vale só para os hosts do
+`workers.dev`, conferida pelo próprio job depois do upload. A prévia só funciona depois que
+o Worker existe: a Cloudflare recusa um `versions upload` antes do primeiro `wrangler
+deploy`, que acontece no merge do PR da publicação. Por isso a prévia desse primeiro PR
+falha, sem bloquear o merge.
+
+**Credenciais.** Um token de API da Cloudflare com o mínimo: editar Workers na conta e
+editar as rotas de Workers só na zona atlasdalavoura.com.br (o domínio é declarado no
+`wrangler.jsonc`, revisado em PR como o resto). Ele fica em dois ambientes do GitHub:
+`production`, liberado só para a `main`, e `preview`; o ID da conta, que não é segredo, é uma
+variável do repositório. Se o token vazar, basta revogá-lo no painel da Cloudflare e trocar
+o segredo.
+
+**Cache.** Os arquivos com nome que muda quando o conteúdo muda (`/_astro/*`, com hash, e
+`/data/<versão>/*`, de versão imutável e conferida por sha256) ficam em cache por um ano,
+`immutable`. As fontes, sem hash no nome, por 30 dias. O HTML é sempre revalidado
+(`max-age=0, must-revalidate`, com ETag, uma ida e volta de poucos bytes): um HTML antigo
+guardado por alguns minutos poderia pedir, depois de um deploy, pacotes e dados que a versão
+nova já não tem, e a página quebraria.
+
+**Testes contra o mesmo motor da produção.** `npm run e2e` serve o build com `wrangler
+dev`, que aplica o `_headers` como a Cloudflare (inclusive na 404 e no redirecionamento da
+barra final). Toda a suíte roda sob a CSP, e `e2e/test.ts` reprova qualquer teste em que o
+navegador acuse uma violação. Um teste negativo injeta um `<script>` e um `onclick` e confere
+que os dois são bloqueados. O teste da regra dos números que simulava um número em
+`::before` passou a injetar o estilo pelo CSSOM, porque a CSP agora recusa um `<style>`
+injetado, como deve.
+
+**404, robots, sitemap e prévia de links.** A 404 é uma página do site, servida com status
+404 para qualquer endereço inexistente (`not_found_handling`), com os caminhos principais e
+a busca de municípios. O `robots.txt` libera tudo e aponta o sitemap, que lista só as páginas
+prontas. Cada página tem canonical e as tags Open Graph e Twitter. A imagem de prévia (1200 ×
+630) é desenhada pelo próprio componente do gráfico da Análise, numa página interna que só
+existe quando `ATLAS_OG=1`, renderizada pelo Playwright (`npm run og-image`), que confere a
+procedência dos números antes de salvar o PNG; um teste falha quando a imagem é de uma versão
+de dados diferente da do ponteiro.
+
+**Páginas em construção.** `web/src/lib/site-pages.ts` registra o estado de cada página.
+As inacabadas (Municípios, as fichas e Método) mostram um aviso que diz o que falta e onde
+olhar enquanto isso, levam `noindex` e ficam fora do sitemap; quando uma página fica pronta,
+a mesma mudança troca o estado, retira o aviso e a coloca no sitemap.
+
+**Verificação depois do deploy.** `verify-site.yml` roda depois de cada deploy e sob
+demanda: http e www redirecionam para https://atlasdalavoura.com.br mantendo caminho e query,
+os certificados valem por mais 14 dias, as páginas, o robots, o sitemap e a imagem respondem,
+a 404 responde 404, cada página traz os cabeçalhos de segurança e de cache, e cada script
+embutido do HTML que a Cloudflare de fato entrega está na CSP. Essa última checagem pega um
+script injetado no caminho (ofuscação de e-mail, Rocket Loader, análise automática), que a CSP
+bloquearia e quebraria a página. O `robots.txt` servido também é comparado byte a byte com
+o que o build gera (`robotsTxt()` em `web/src/lib/site-pages.ts`), o que pega um bloco
+acrescentado no caminho, como o `robots.txt` gerenciado da Cloudflare. Por fim, um navegador
+abre a Análise e o Explorar e exige zero violações e zero erros.
+
+**HSTS.** Começa com um dia (`max-age=86400; includeSubDomains`) e sobe para um ano depois
+de uma semana de verificações verdes. O `includeSubDomains` exige HTTPS em todo subdomínio, o
+que vale para o www (redirecionado pela Cloudflare) e para o dbt docs (GitHub Pages com HTTPS
+obrigatório). O preload fica para uma decisão separada, porque sair da lista dos navegadores
+leva meses.
+
+**Domínio, DNS e DNSSEC.** O domínio atlasdalavoura.com.br continua registrado no
+registro.br, mas o DNS passou para a Cloudflare (2026-11-17): o domínio próprio de um Worker
+só existe numa zona da Cloudflare, e o apex não aceita CNAME para um host de fora. A troca
+seguiu a ordem que não quebra a validação: o registro.br retirou o DS antigo antes de
+delegar aos servidores da Cloudflare (cerca de duas horas depois); com a delegação ativa, a
+Cloudflare passou a assinar a zona (algoritmo 13), o DS foi recalculado a partir da chave
+publicada e conferido campo a campo contra o do painel, e só então cadastrado no registro.br.
+Manter o DS antigo durante a troca faria os resolvedores que validam DNSSEC recusarem o
+domínio, porque a chave nova não bateria com ele. Resultado conferido com `dig` e `delv` nos
+resolvedores públicos: respostas com o selo `ad`, "fully validated". O domínio não envia
+e-mail, e a zona diz isso: MX nulo, SPF `-all` e DMARC `p=reject`, o que impede o uso do
+nome em e-mails forjados.
+
+**Ajustes da zona.** HTTPS obrigatório e TLS 1.2 no mínimo. Ficam desligados os recursos
+que alteram o HTML no caminho ou injetam scripts, que a CSP bloquearia: ofuscação de e-mail,
+Rocket Loader, Bot Fight Mode (injeta detecções em JavaScript que não podem ser desligadas),
+AI Labyrinth e a análise automática do Web Analytics. O Bot Preference Sync também fica
+desligado: com qualquer política de robôs de IA em bloqueio, ele acrescenta um bloco ao
+nosso `robots.txt`, e o arquivo publicado deixaria de ser o versionado e testado. As
+políticas de IA estão em permitir; recusar o uso para treino, se um dia fizer sentido, é uma
+decisão de conteúdo e entra no próprio `robots.txt`.
+
+**www.** O `www` é um registro `AAAA` para `100::` (endereço reservado para descarte) com o
+proxy da Cloudflare, e uma regra de redirecionamento responde na borda, antes de qualquer
+origem: `301` para `https://atlasdalavoura.com.br` com o mesmo caminho e a mesma query, por
+`http` e por `https`, num salto só. O modelo pronto de "www para o domínio" foi descartado
+por uma regra com expressão própria, que cobre os dois esquemas e não depende de padrão
+curinga.
+
+**dbt docs em docs.atlasdalavoura.com.br.** O dbt docs continua no GitHub Pages, publicado
+pelo `docs.yml`, agora com o domínio do projeto. O domínio foi verificado na conta do GitHub
+(registro TXT de desafio, mantido na zona), o que impede outra conta de publicar um site do
+Pages em qualquer subdomínio dele. O `docs` é um CNAME para `alveshenriique.github.io` sem o
+proxy da Cloudflare: o GitHub só emite o certificado (Let's Encrypt, renovado por ele) se o
+nome apontar direto para os seus servidores, e a verificação depois do deploy confere esse
+certificado. HTTPS obrigatório no Pages, e o endereço antigo
+(`alveshenriique.github.io/atlas-da-lavoura/`) redireciona para o novo. Como o Pages é
+publicado por workflow, o domínio fica nas configurações do repositório, sem arquivo `CNAME`.
