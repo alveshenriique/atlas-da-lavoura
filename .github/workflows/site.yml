@@ -272,7 +272,12 @@ jobs:
         run: |
           npx wrangler versions upload --preview-alias "pr-${PR}" --message "PR #${PR} ${COMMIT}" | tee ../upload.log
           url=$(grep -oE "https://pr-${PR}-[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev" ../upload.log | head -n 1)
-          test -n "$url"
+          # wrangler prints the alias URL only when Cloudflare reports the version's preview:
+          # Preview URLs on for the Worker and the account's workers.dev subdomain active.
+          if [ -z "$url" ]; then
+            echo "::error title=No preview URL::wrangler uploaded the version but reported no Version Preview Alias URL. Check that Preview URLs are enabled for the Worker (Settings > Domains & Routes) and that the account's workers.dev subdomain is active (Workers & Pages > Account details)."
+            exit 1
+          fi
           echo "url=${url}/" >> "$GITHUB_OUTPUT"
 
       - name: Check that the preview answers and stays out of search engines
