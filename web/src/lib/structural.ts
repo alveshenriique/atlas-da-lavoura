@@ -6,7 +6,9 @@
 //   "Tabela N" or "Nota N", where N is its position among the marks of the same kind, in
 //   document order, and it cites no data;
 // - a numbered list is an <ol data-structural="list"> that counts from 1: no start, no
-//   reversed, no value on its items.
+//   reversed, and no value on its items other than each item's own position (1, 2, 3…).
+//   A list whose items move in place (the Explorar ranking) sets those values, because a
+//   browser does not always renumber the items that move.
 // Everything inside a mark other than the mark's own number is still checked as data, and a
 // number in CSS-generated content (::before, ::after) is always refused.
 // Shared by the build and the provenance test (e2e/provenance.ts); no DOM here.
@@ -57,14 +59,20 @@ export interface NumberedList {
   structural: boolean;
   start: number | null;
   reversed: boolean;
-  hasValues: boolean;
+  /** The value attribute of each item, or null where it has none. */
+  values: (number | null)[];
 }
 
 export function checkNumberedLists(lists: NumberedList[]): string[] {
   return lists.flatMap((list) => {
     if (!list.structural) return [`${list.where}: numbered list not marked as structural`];
-    if (list.tag !== "ol" || list.start !== 1 || list.reversed || list.hasValues) {
+    if (list.tag !== "ol" || list.start !== 1 || list.reversed) {
       return [`${list.where}: a structural list must be an <ol> counting from 1`];
+    }
+    const none = list.values.every((v) => v === null);
+    const positions = list.values.every((v, i) => v === i + 1);
+    if (!none && !positions) {
+      return [`${list.where}: the items of a structural list may only carry their own position as value`];
     }
     return [];
   });
