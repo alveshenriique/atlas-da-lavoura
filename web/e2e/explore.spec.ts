@@ -3,6 +3,8 @@
 // (data-view, data-counts, data-active-id, data-transition), which no reader sees and the
 // number check ignores; the numbers people see are checked against the data package.
 import AxeBuilder from "@axe-core/playwright";
+import type { APIRequestContext } from "@playwright/test";
+
 import { expect, type Locator, type Page, test } from "./test";
 
 import { MIN_YIELD_AREA_HA } from "../src/lib/classify";
@@ -23,8 +25,23 @@ const filter = (page: Page, name: "Cultura" | "Medida" | "Ano") =>
 
 async function counts(page: Page) {
   const raw = await map(page).getAttribute("data-counts");
-  return JSON.parse(raw ?? "null") as { nodata: number; zero: number; value: number; small: number };
+  return JSON.parse(raw ?? "null") as { nodata: number; zero: number; value: number; small: number; notyet: number };
 }
+
+interface Matrix {
+  years: number[];
+  values: (number | null)[][];
+}
+interface Index {
+  municipalities: { municipality_id: number[]; state_abbreviation: string[]; first_pam_year: (number | null)[] };
+}
+async function packageFile<T>(page: Page, request: APIRequestContext, name: string): Promise<T> {
+  const base = await page.evaluate(() => document.documentElement.dataset.dataBase ?? "");
+  return (await (await request.get(`${base}${name}`)).json()) as T;
+}
+/** The first year in which any municipality of a matrix has a value. */
+const firstWithData = (file: Matrix) =>
+  file.years.find((_, c) => file.values.some((row) => row[c] !== null && row[c] !== undefined));
 
 /** A point well inside the highlighted municipality (away from its border), in page
  *  coordinates: the grid point closest to the centre of its box with a 3 px margin. */
@@ -88,6 +105,7 @@ test.describe("the Explorar map", () => {
       zero: column.filter((v) => v === 0).length,
       value: column.filter((v) => v !== null && v > 0).length,
       small: 0,
+      notyet: 0,
     });
     // A total: proportional circles, one per municipality that produced.
     await expect(map(page)).toHaveAttribute("data-mode", "circles");
@@ -158,17 +176,135 @@ test.describe("the Explorar map", () => {
     await expect(page.locator(".explore__legend-title")).toContainText("t de café em coco");
   });
 
-  test("shows the real value before it exists as not available, never as zero", async ({
-    page,
-  }) => {
-    await page.goto("/explorar/?serie=soja&medida=valor&ano=1990");
+  // A choice of method (the real value starts in 1995) must never read as missing data: the
+  // timeline of the value starts in 1995, a link to an earlier year moves there and says
+  // so, and "sem dado" stays for what the source does not have.
+  test("starts the real value in 1995, moves an earlier year there and says why", async ({ page, request }) => {
+    await page.goto("/explorar/?serie=soja&medida=valor&ano=1975");
     await ready(page);
-    expect(await counts(page)).toEqual({ nodata: 5571, zero: 0, value: 0, small: 0 });
-    await expect(page.locator(".explore__status--note")).toHaveText(
-      "O valor real da produção só existe a partir de 1995.",
+    await expect(map(page)).toHaveAttribute("data-view", "soybean/production_value_real_thousand_brl/1995/BR");
+    await expect(page.locator(".explore__notice")).toHaveText(
+      "O valor da produção começa em 1995: o mapa passou de 1975 para 1995.",
+    );
+    await expect(page.locator(".explore__legend")).toContainText(
+      "O valor da produção começa em 1995: antes disso, a hiperinflação e as trocas de moeda",
     );
     const legend = page.getByRole("list", { name: "Legenda do mapa" });
-    await expect(legend.getByRole("listitem")).toHaveText(["não disponível"]);
+    await expect(legend).not.toContainText("não disponível");
+    // Every municipality without a value in 1995 is a null of the file: those created later
+    // did not exist yet, the others have no data.
+    const file = await packageFile<Matrix>(page, request, "explore/soybean/production_value_real_thousand_brl.json");
+    const { municipalities } = await packageFile<Index>(page, request, "municipalities.json");
+    const col = file.years.indexOf(1995);
+    const nulls = file.values.filter((row) => row[col] === null).length;
+    const created = municipalities.first_pam_year.filter((first) => first !== null && first > 1995).length;
+    expect(created).toBeGreaterThan(0);
+    expect(await counts(page)).toMatchObject({ nodata: nulls - created, notyet: created });
+    await expect(legend).toContainText("município ainda não existia");
+    await expect(page.locator(".explore-panel__number")).not.toContainText("sem dado");
+    // Choosing a year clears the line.
+    await filter(page, "Ano").selectOption("2000");
+    await expect(page.locator(".explore__notice")).toHaveText("");
+    expect(await findUnsourcedNumbers(page, request)).toEqual([]);
+  });
+
+  test("moves to 1995 when the value is chosen from an earlier year", async ({ page }) => {
+    await page.goto("/explorar/?serie=milho&ano=1980");
+    await ready(page);
+    await filter(page, "Medida").selectOption({ label: "em valor da produção" });
+    await expect(map(page)).toHaveAttribute("data-view", "corn/production_value_real_thousand_brl/1995/BR");
+    await expect(page.locator(".explore__notice")).toHaveText(
+      "O valor da produção começa em 1995: o mapa passou de 1980 para 1995.",
+    );
+    // Back to the production: the year stays, the line goes.
+    await filter(page, "Medida").selectOption({ label: "em toneladas" });
+    await expect(map(page)).toHaveAttribute("data-view", "corn/production_t/1995/BR");
+    await expect(page.locator(".explore__notice")).toHaveText("");
+  });
+
+  // No year the timeline offers is empty for every municipality: each measure starts with
+  // the first year of its matrix that has a value (the value in 1995, the planted area in
+  // 1988), so a gap of the source's method never reads as missing data.
+  test("offers, for every series and measure, only years with data in its file", async ({ page, request }) => {
+    for (const [slug, id] of [
+      ["soja", "soybean"],
+      ["milho", "corn"],
+      ["cafe-em-coco", "coffee_in_husk"],
+      ["cafe-beneficiado", "coffee_processed"],
+      ["cafe-arabica", "coffee_arabica"],
+      ["cafe-canefora", "coffee_canephora"],
+    ] as const) {
+      await page.goto(`/explorar/?serie=${slug}`);
+      await ready(page);
+      for (const measure of ["production_t", "harvested_area_ha", "planted_or_bearing_area_ha", "production_value_real_thousand_brl"]) {
+        await filter(page, "Medida").selectOption(measure);
+        const file = await packageFile<Matrix>(page, request, `explore/${id}/${measure}.json`);
+        const first = firstWithData(file) ?? 0;
+        const offered = await filter(page, "Ano").locator("option").allTextContents();
+        const expected = file.years.filter((year) => year >= first).map(String);
+        expect(offered, `${slug} ${measure}`).toEqual(expected);
+        await expect(page.locator(".timeline__labels"), `${slug} ${measure}`).toContainText(String(first));
+      }
+    }
+  });
+
+  test("starts the planted area in 1988, when the source starts it, and says why", async ({ page, request }) => {
+    await page.goto("/explorar/?serie=soja&medida=area-plantada&ano=1980");
+    await ready(page);
+    await expect(map(page)).toHaveAttribute("data-view", "soybean/planted_or_bearing_area_ha/1988/BR");
+    await expect(page.locator(".explore__notice")).toHaveText("A área plantada começa em 1988: o mapa passou de 1980 para 1988.");
+    await expect(page.locator(".explore__legend")).toContainText(
+      "A área plantada começa em 1988: antes disso, a PAM publicava só a área colhida.",
+    );
+    // Coffee names it as its area: the area in production.
+    await page.goto("/explorar/?serie=cafe-em-coco&medida=area-plantada&ano=1975");
+    await ready(page);
+    await expect(page.locator(".explore__notice")).toHaveText("A área em produção começa em 1988: o mapa passou de 1975 para 1988.");
+    expect(await findUnsourcedNumbers(page, request)).toEqual([]);
+  });
+
+  // A municipality created after the year shown did not exist yet; it is not "sem dado".
+  test("marks as not existing yet exactly the municipalities whose first year is later", async ({ page, request }) => {
+    await page.goto("/explorar/");
+    const { municipalities } = await packageFile<Index>(page, request, "municipalities.json");
+    for (const [slug, id, measure, slugMeasure, year] of [
+      ["soja", "soybean", "production_t", "producao", 1980],
+      ["milho", "corn", "harvested_area_ha", "area-colhida", 1990],
+      ["cafe-arabica", "coffee_arabica", "production_t", "producao", 2012],
+    ] as const) {
+      await page.goto(`/explorar/?serie=${slug}&medida=${slugMeasure}&ano=${year}`);
+      await ready(page);
+      const file = await packageFile<Matrix>(page, request, `explore/${id}/${measure}.json`);
+      const col = file.years.indexOf(year);
+      const later = municipalities.first_pam_year.map((first) => first !== null && first > year);
+      // The package has no value before a municipality's first year.
+      expect(file.values.filter((row, r) => later[r] && row[col] !== null)).toEqual([]);
+      const nulls = file.values.filter((row) => row[col] === null).length;
+      const created = later.filter(Boolean).length;
+      expect(await counts(page), `${slug} ${year}`).toMatchObject({ notyet: created, nodata: nulls - created });
+    }
+    // Municipality by municipality, in the table of a state: Mato Grosso, value, 1995.
+    await page.goto("/explorar/?serie=soja&medida=valor&ano=1995&uf=MT");
+    await ready(page);
+    await page.getByRole("button", { name: "Ver como tabela" }).click();
+    const rows = page.locator("#explorar-tabela tbody tr");
+    await expect(rows).toHaveCount(142);
+    const read = await rows.evaluateAll((trs) =>
+      trs.map((tr) => ({
+        id: Number(/\/municipio\/(\d+)\//.exec(tr.querySelector("a")?.getAttribute("href") ?? "")?.[1]),
+        text: tr.querySelector("td.num")?.textContent ?? "",
+      })),
+    );
+    const file = await packageFile<Matrix>(page, request, "explore/soybean/production_value_real_thousand_brl.json");
+    const col = file.years.indexOf(1995);
+    const { municipality_id: ids, state_abbreviation: ufs, first_pam_year: firsts } = municipalities;
+    const expectedNotYet = ids.filter((_, r) => ufs[r] === "MT" && (firsts[r] ?? 0) > 1995).sort();
+    const expectedNoData = ids
+      .filter((_, r) => ufs[r] === "MT" && file.values[r]?.[col] === null && !((firsts[r] ?? 0) > 1995))
+      .sort();
+    expect(expectedNotYet.length).toBeGreaterThan(0);
+    expect(read.filter((r) => r.text === "ainda não existia").map((r) => r.id).sort()).toEqual(expectedNotYet);
+    expect(read.filter((r) => r.text === "sem dado").map((r) => r.id).sort()).toEqual(expectedNoData);
   });
 
   test("computes the yield in the browser, production over harvested area", async ({
@@ -285,8 +421,8 @@ test.describe("the Explorar map", () => {
     await ready(page);
     await expect(map(page)).toHaveAttribute("data-view", "soybean/production_t/2025/MT");
     await expect(page).toHaveURL(/&uf=MT$/);
-    const { nodata, zero, value, small } = await counts(page);
-    expect(nodata + zero + value + small).toBe(142);
+    const { nodata, zero, value, small, notyet } = await counts(page);
+    expect(nodata + zero + value + small + notyet).toBe(142);
     await page.getByRole("combobox", { name: "Foco" }).selectOption({ label: "Brasil" });
     await expect(map(page)).toHaveAttribute("data-view", "soybean/production_t/2025/BR");
   });
@@ -458,7 +594,8 @@ test.describe("the first paint", () => {
     });
     await page.goto("/explorar/");
     await expect(page.locator(".explore__outline-svg")).toBeVisible();
-    const status = page.getByRole("status");
+    // The loading line of the map (the notice of a moved year is another status, empty here).
+    const status = page.locator(".explore__map").getByRole("status");
     await expect(status).toHaveText("Carregando os municípios…");
     await expect(map(page)).toHaveAttribute("aria-busy", "true");
     const legend = page.getByRole("list", { name: "Legenda do mapa" });

@@ -31,18 +31,34 @@ interface ExploreFile {
   values: (number | null)[][];
 }
 interface Municipalities {
+  municipalities: { first_pam_year: (number | null)[] };
   states: { state_abbreviation: string[]; state_name: string[] };
 }
 
 const catalog = loadCatalog();
 const s = catalog.series;
+const matrix = (id: string, measure: string) => loadDataFile<ExploreFile>(`explore/${id}/${measure}.json`);
+// A measure starts with the first year in which any municipality has a value: the real value
+// in 1995 and the planted area in 1988, where the series is older; the island starts their
+// timeline there (lib/explore-view.ts), and the notice cites the same year (`firstyear`).
+const measureFirst = (id: string, firstYear: number) => {
+  const out: SeriesOption["measureFirst"] = {};
+  for (const measure of MEASURES) {
+    if (measure === "yield") continue;
+    const { years, values } = matrix(id, measure);
+    const first = years.find((_, c) => values.some((row) => row[c] !== null));
+    if (first === undefined) throw new Error(`explore/${id}/${measure}.json has no value`);
+    if (first > firstYear) out[measure] = first;
+  }
+  return out;
+};
 const series: SeriesOption[] = s.series.map((id, i) => ({
   id,
   phrase: phraseOf(id),
   article: id === "soybean" ? "a" : "o",
   firstYear: Number(s.first_year[i]),
   lastYear: Number(s.last_year[i]),
-  valueFirstYear: Number(s.real_value_first_year[i]),
+  measureFirst: measureFirst(id, Number(s.first_year[i])),
   areaPhrase: String(s.area_name_pt[i]),
   areaLabel: capitalise(String(s.area_name_pt[i])),
   productionUnit: String(s.production_unit_pt[i]),
@@ -68,17 +84,15 @@ function capitalise(text: string): string {
 
 // The fixed scale of each series and measure, pooled over every year of the series:
 // circles for the totals, colour classes for the yield.
-const matrix = (id: string, measure: string) =>
-  loadDataFile<ExploreFile>(`explore/${id}/${measure}.json`).values;
 const scales: Record<string, Record<string, Scale>> = {};
 for (const { id } of series) {
   const own: Record<string, Scale> = {};
   for (const measure of MEASURES) {
     if (measure === "yield") {
-      const yields = yieldMatrix(matrix(id, "production_t"), matrix(id, "harvested_area_ha"), true);
+      const yields = yieldMatrix(matrix(id, "production_t").values, matrix(id, "harvested_area_ha").values, true);
       own[measure] = { kind: "classes", breaks: classBreaks(pooledPositives(yields)) };
     } else {
-      own[measure] = { kind: "circles", ...circleScale(pooledPositives(matrix(id, measure))) };
+      own[measure] = { kind: "circles", ...circleScale(pooledPositives(matrix(id, measure).values)) };
     }
   }
   scales[id] = own;
@@ -86,7 +100,11 @@ for (const { id } of series) {
 
 // The states in focus, and the aspect ratio of the national map with its margin (the box
 // keeps it when a state is in focus, so the page never jumps).
-const states = loadDataFile<Municipalities>("municipalities.json").states;
+const index = loadDataFile<Municipalities>("municipalities.json");
+const states = index.states;
+// From the last of the municipalities' first years in the PAM on, every municipality exists:
+// the default view (the last harvest) draws without the municipalities' file.
+const lastFirstYear = Math.max(...index.municipalities.first_pam_year.filter((y): y is number => y !== null));
 const ufs = states.state_abbreviation
   .map((abbr, i) => ({ abbr, name: String(states.state_name[i]) }))
   .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
@@ -175,6 +193,7 @@ const municipalityCount = format(catalog.municipality_count, "int");
       baseYear={{ text: baseYear.text, src: baseYear.src }}
       frame={national.frame}
       defaultRanking={defaultRanking}
+      lastFirstYear={lastFirstYear}
     >
       <svg
         class="explore__outline-svg"

@@ -26,8 +26,13 @@ interface Props {
   /** The explore matrices the map has loaded, by file name. */
   files: Record<string, ExploreFile>;
   measureLabel: string;
+  /** The series as the title sentence names it ("soja", "café arábica"). */
+  seriesPhrase: string;
   unit: string;
   firstYear: number;
+  /** The first year of the measure (later than the series' for the value and the planted
+   *  area): the line starts there, as the timeline does. */
+  fromYear: number;
   defaultRanking: DefaultRanking;
   /** Puts a state in focus on the map (or Brazil, with null). */
   onFocus: (uf: string | null) => void;
@@ -111,14 +116,16 @@ export default function ExplorePanel(props: Props) {
   // The territory in focus: Brazil, or the state, from its place file.
   const focusPlace = view.uf ? places[view.uf] : undefined;
   const focusName = view.uf ? (ufs.find((u) => u.abbr === view.uf)?.name ?? view.uf) : "Brasil";
-  const series: Point[] | null = view.uf
-    ? focusPlace
-      ? (() => {
-          const s = territorySeries(focusPlace, view.series, view.measure);
-          return s.years.map((year, i) => ({ year, value: s.values[i] ?? null }));
-        })()
-      : null
-    : (national?.points ?? null);
+  const series: Point[] | null = (
+    view.uf
+      ? focusPlace
+        ? (() => {
+            const s = territorySeries(focusPlace, view.series, view.measure);
+            return s.years.map((year, i) => ({ year, value: s.values[i] ?? null }));
+          })()
+        : null
+      : (national?.points ?? null)
+  )?.filter((p) => p.year >= props.fromYear) ?? null;
   const current = view.uf
     ? territoryValue(`places/state/${view.uf}.json`, focusPlace, view.series, view.measure, view.year)
     : (() => {
@@ -159,22 +166,29 @@ export default function ExplorePanel(props: Props) {
       </span>
     );
   };
-  const unitAfter = fmt === "brl" ? "" : ` ${unit}`;
+  // Next to the large number, the unit is short ("t", not "t de café beneficiado"); what it
+  // is a ton of goes in the line under the number, and the series in the line above.
+  const shortUnit = unit.replace(/ de .+$/, "");
+  const unitAfter = fmt === "brl" ? "" : shortUnit;
+  const unitDetail = shortUnit !== unit ? `, em ${unit}` : "";
 
   return (
     <aside ref={rootRef} className="explore__panel explore-panel" aria-label={`Painel: ${focusName}`}>
       <p className="explore-panel__kicker kicker">
-        {focusName} ·{" "}
+        {focusName} · {props.seriesPhrase} ·{" "}
         <span className="num" data-src={yearSrc}>
           {format(view.year, "year")}
         </span>
       </p>
       <p className="explore-panel__number">
         {valueText(current.value, current.src, current.kind)}
-        {current.kind === "value" || current.kind === "small" ? <span className="explore-panel__unit">{unitAfter}</span> : null}
+        {(current.kind === "value" || current.kind === "small") && unitAfter ? (
+          <span className="explore-panel__unit">{unitAfter}</span>
+        ) : null}
       </p>
       <p className="explore-panel__sub small">
         {measureLabel}
+        {unitDetail}
         {focusShare && focusShareValue !== null && Number.isFinite(focusShareValue) ? (
           <>
             {" "}
@@ -216,8 +230,11 @@ export default function ExplorePanel(props: Props) {
       {ranking ? (
         <>
           <ol className="ranking" data-structural="list" aria-label={`Ranking dos estados, ${measureLabel}`}>
+            {/* Each item carries its rank: the rows move in place when the view changes, and
+                a browser does not always renumber the items that move (Chrome kept the old
+                numbers). */}
             {ranking.map((row, k) => (
-              <li key={row.abbr} className="ranking__row" hidden={!expanded && k >= SHOWN}>
+              <li key={row.abbr} value={k + 1} className="ranking__row" hidden={!expanded && k >= SHOWN}>
                 <button
                   type="button"
                   className="ranking__button"

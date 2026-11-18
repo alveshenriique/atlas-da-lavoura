@@ -8,7 +8,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { CLASS_COUNT, cellState, isSmallArea, yieldCell } from "../../lib/classify";
 import { CIRCLE_MAX_RADIUS, CIRCLE_MIN_RADIUS_PX, circleRadius } from "../../lib/symbols";
-import { clampYear, type ExploreView as View, type Measure, parseView, serializeView } from "../../lib/explore-view";
+import {
+  type ExploreView as View,
+  type Measure,
+  type MovedYear,
+  readView,
+  serializeView,
+  withYearFor,
+  yearRange,
+} from "../../lib/explore-view";
 import { format } from "../../lib/format";
 import { usePrefersReducedMotion } from "../../lib/usePrefersReducedMotion";
 import {
@@ -32,7 +40,8 @@ export interface SeriesOption {
   article: string;
   firstYear: number;
   lastYear: number;
-  valueFirstYear: number;
+  /** The measures that start after the series, with their first year with data. */
+  measureFirst: Partial<Record<Measure, number>>;
   areaPhrase: string;
   areaLabel: string;
   productionUnit: string;
@@ -55,6 +64,9 @@ export interface Props {
   children?: React.ReactNode;
   /** The states ranked for the default view, worked out at build time from the state files. */
   defaultRanking: DefaultRanking;
+  /** The last of the municipalities' first years in the PAM: from it on, every municipality
+   *  exists, and the map needs no first years (nor municipalities.json) to draw. */
+  lastFirstYear: number;
 }
 
 const STEP_MS = 900;
@@ -68,6 +80,15 @@ const MEASURE_PHRASE: Record<Measure, (s: SeriesOption) => string> = {
   planted_or_bearing_area_ha: (s) => (s.areaPhrase === "área em produção" ? "em hectares em produção" : "em hectares plantados"),
   production_value_real_thousand_brl: () => "em valor da produção",
   yield: () => "em quilos por hectare",
+};
+
+// The measures that can start after their series: what the notice calls them, and why.
+const LATE: Partial<Record<Measure, { subject: (s: SeriesOption) => string; why: string }>> = {
+  production_value_real_thousand_brl: {
+    subject: () => "O valor da produção",
+    why: "a hiperinflação e as trocas de moeda não permitem corrigir os valores pela inflação com confiança",
+  },
+  planted_or_bearing_area_ha: { subject: (s) => `A ${s.areaPhrase}`, why: "a PAM publicava só a área colhida" },
 };
 
 const MEASURE_LABEL: Record<Measure, (s: SeriesOption) => string> = {
@@ -102,8 +123,9 @@ function translucent(hex: string, alpha: number): string {
 }
 
 interface Reading {
-  /** "small": a yield from a harvested area too small to compare (not classed). */
-  kind: "nodata" | "zero" | "value" | "small" | "unavailable";
+  /** "small": a yield from a harvested area too small to compare (not classed); "notyet":
+   *  a municipality created after that year (before its first year in the PAM). */
+  kind: "nodata" | "zero" | "value" | "small" | "notyet";
   value?: number;
   src?: string;
 }
@@ -118,7 +140,8 @@ function useFitSelect(ref: React.RefObject<HTMLSelectElement | null>, text: stri
     const fit = () => {
       const style = getComputedStyle(select);
       context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-      select.style.width = `${Math.ceil(context.measureText(text).width) + 2}px`;
+      const padding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+      select.style.width = `${Math.ceil(context.measureText(text).width + padding) + 2}px`;
     };
     fit();
     void document.fonts.ready.then(fit);
@@ -128,6 +151,8 @@ function useFitSelect(ref: React.RefObject<HTMLSelectElement | null>, text: stri
 export default function ExploreView(props: Props) {
   const { dataBase, series, ufs, scales, defaults } = props;
   const [view, setView] = useState<View>(defaults);
+  // A year moved to the first year of a measure that starts later, said once.
+  const [moved, setMoved] = useState<MovedYear | null>(null);
   // The island renders the default view on the server; the URL is read once on mount, and
   // nothing is fetched or written back before that, so a permanent link loads only its data.
   const [urlRead, setUrlRead] = useState(false);
@@ -157,11 +182,17 @@ export default function ExploreView(props: Props) {
 
   const option = series.find((s) => s.id === view.series) ?? series[0];
   if (!option) throw new Error("no series to explore");
+  // The years of this series and measure: a measure that starts later (the real value, the
+  // planted area) starts at its own first year, so the timeline never offers a year the
+  // source left empty for every municipality.
+  const range = yearRange(option, view.measure);
   const years = useMemo(
-    () => Array.from({ length: option.lastYear - option.firstYear + 1 }, (_, i) => option.firstYear + i),
-    [option],
+    () => Array.from({ length: range.last - range.first + 1 }, (_, i) => range.first + i),
+    [range.first, range.last],
   );
-  const yearIndex = view.year - option.firstYear;
+  const yearIndex = view.year - range.first;
+  const late = range.first > option.firstYear ? LATE[view.measure] : undefined;
+  const firstSrc = `${fileOf(option.id, view.measure)}#/values!firstyear|year`;
   const yearSrc = (year: number) => `${fileOf(option.id, "production_t")}#/years/${year - option.firstYear}|year`;
   const isYield = view.measure === "yield";
   const measureFiles = isYield
@@ -174,19 +205,23 @@ export default function ExploreView(props: Props) {
       : view.measure === "production_value_real_thousand_brl"
         ? "mil R$"
         : "ha";
-  const valueUnavailable =
-    view.measure === "production_value_real_thousand_brl" && view.year < option.valueFirstYear;
   const scale = scales[option.id]?.[view.measure];
   const mode = scale?.kind ?? (isYield ? "classes" : "circles");
   const currentBreaks = scale?.kind === "classes" ? scale.breaks : [];
   const circleMax = scale?.kind === "circles" ? scale.max : 0;
   const breakSrc = (k: number) => `${fileOf(option.id, "production_t")}#/values!ybreak:${k}|int`;
-  const circleSrc = (k: number) => `${fileOf(option.id, view.measure)}#/values!circle:${k}|int`;
+  // Round references, written as the panel writes amounts: "100 mil", "R$ 5 bi".
+  const refFormat = view.measure === "production_value_real_thousand_brl" ? "shortbrl" : "short";
+  const circleSrc = (k: number) => `${fileOf(option.id, view.measure)}#/values!circle:${k}|${refFormat}`;
+  // Before the last first year some municipalities did not exist yet; their first years
+  // come with the municipalities' file.
+  const needsFirstYears = view.year < props.lastFirstYear;
 
   // --- The view in the URL. ---
   useEffect(() => {
-    const ranges = series.map((s) => ({ id: s.id, firstYear: s.firstYear, lastYear: s.lastYear }));
-    setView(parseView(window.location.search, ranges, ufs.map((u) => u.abbr), defaults));
+    const read = readView(window.location.search, series, ufs.map((u) => u.abbr), defaults);
+    setView(read.view);
+    setMoved(read.moved);
     setUrlRead(true);
   }, [series, ufs, defaults]);
 
@@ -232,8 +267,8 @@ export default function ExploreView(props: Props) {
   }, [dataBase, measureFiles.join(","), files, urlRead]);
 
   useEffect(() => {
-    if (tableOpen) loadNames();
-  }, [tableOpen, loadNames]);
+    if (tableOpen || (urlRead && needsFirstYears)) loadNames();
+  }, [tableOpen, urlRead, needsFirstYears, loadNames]);
 
   // --- Geometry in focus, and the matrix row of each of its municipalities. ---
   const geo = view.uf === null ? national : (states[view.uf] ?? null);
@@ -244,11 +279,16 @@ export default function ExploreView(props: Props) {
   }, [geo, view.uf, names]);
 
   // --- What each municipality reads in this view (any year, for the frame drawn ahead). ---
+  // Without a value, a municipality before its first year in the PAM did not exist yet (the
+  // package has no value before it); after it, the source has no data.
+  const missing = useCallback(
+    (row: number, year: number): Reading => ({
+      kind: (names?.first_pam_year[row] ?? -Infinity) > year ? "notyet" : "nodata",
+    }),
+    [names],
+  );
   const readingAt = useCallback(
     (row: number, year: number): Reading => {
-      if (view.measure === "production_value_real_thousand_brl" && year < option.valueFirstYear) {
-        return { kind: "unavailable" };
-      }
       if (isYield) {
         const production = files[fileOf(option.id, "production_t")];
         const area = files[fileOf(option.id, "harvested_area_ha")];
@@ -256,7 +296,7 @@ export default function ExploreView(props: Props) {
         const col = year - (production.years[0] ?? 0);
         const harvested = area.values[row]?.[col] ?? null;
         const value = yieldCell(production.values[row]?.[col] ?? null, harvested);
-        if (value === null) return { kind: "nodata" };
+        if (value === null) return missing(row, year);
         if (value === 0) return { kind: "zero" };
         const src = `${fileOf(option.id, "production_t")}#/values/${row}/${col}!yield|int`;
         return { kind: isSmallArea(harvested) ? "small" : "value", value, src };
@@ -265,15 +305,16 @@ export default function ExploreView(props: Props) {
       if (!file) return { kind: "nodata" };
       const col = year - (file.years[0] ?? 0);
       const value = col >= 0 ? (file.values[row]?.[col] ?? null) : null;
-      if (value === null) return { kind: "nodata" };
+      if (value === null) return missing(row, year);
       if (value === 0) return { kind: "zero" };
       return { kind: "value", value, src: `${fileOf(option.id, view.measure)}#/values/${row}/${col}|int` };
     },
-    [files, isYield, option.id, option.valueFirstYear, view.measure],
+    [files, isYield, option.id, view.measure, missing],
   );
   const reading = useCallback((row: number) => readingAt(row, view.year), [readingAt, view.year]);
 
-  const ready = geo !== null && rows !== null && measureFiles.every((f) => files[f]);
+  const ready =
+    geo !== null && rows !== null && measureFiles.every((f) => files[f]) && (!needsFirstYears || names !== null);
   // The base frame of a year: in the choropleth, the class of each municipality; under the
   // circles, a light tone for every municipality with data. No data is hatched in both.
   const codesFor = useCallback(
@@ -282,7 +323,8 @@ export default function ExploreView(props: Props) {
       const out = new Uint8Array(rows.length);
       rows.forEach((row, i) => {
         const r = readingAt(row, year);
-        if (r.kind === "nodata" || r.kind === "unavailable") out[i] = CODE.nodata;
+        if (r.kind === "nodata") out[i] = CODE.nodata;
+        else if (r.kind === "notyet") out[i] = CODE.notyet;
         else if (r.kind === "small") out[i] = CODE.small;
         else if (mode === "circles" || r.kind === "zero" || r.value === undefined) out[i] = CODE.zero;
         else {
@@ -315,14 +357,8 @@ export default function ExploreView(props: Props) {
 
   const counts = useMemo(() => {
     if (!ready || !rows) return null;
-    const out = { nodata: 0, zero: 0, value: 0, small: 0 };
-    for (const row of rows) {
-      const kind = reading(row).kind;
-      if (kind === "value") out.value++;
-      else if (kind === "small") out.small++;
-      else if (kind === "zero") out.zero++;
-      else out.nodata++;
-    }
+    const out = { nodata: 0, zero: 0, value: 0, small: 0, notyet: 0 };
+    for (const row of rows) out[reading(row).kind]++;
     return out;
   }, [ready, rows, reading]);
 
@@ -573,6 +609,7 @@ export default function ExploreView(props: Props) {
   useEffect(() => {
     if (!playing) return;
     const timer = window.setTimeout(() => {
+      setMoved(null);
       setView((v) => {
         if (v.year >= option.lastYear) {
           setPlaying(false);
@@ -585,7 +622,7 @@ export default function ExploreView(props: Props) {
   }, [playing, view.year, option.lastYear]);
 
   const togglePlay = () => {
-    if (!playing && view.year >= option.lastYear) setView((v) => ({ ...v, year: option.firstYear }));
+    if (!playing && view.year >= option.lastYear) setYear(range.first);
     setPlaying((p) => !p);
   };
 
@@ -681,8 +718,8 @@ export default function ExploreView(props: Props) {
 
   // --- Text of a reading, with its provenance. ---
   const readingText = (r: Reading, withUnit = true) => {
-    if (r.kind === "unavailable") return <span>não disponível</span>;
     if (r.kind === "nodata") return <span>sem dado</span>;
+    if (r.kind === "notyet") return <span>ainda não existia</span>;
     if (r.kind === "zero") return <span>não produziu</span>;
     return (
       <span>
@@ -694,6 +731,8 @@ export default function ExploreView(props: Props) {
     );
   };
   const SMALL_AREA = "área colhida pequena demais para comparar";
+  const NOT_YET = "o território fazia parte de outro município";
+  const flag = (r: Reading) => (r.kind === "small" ? SMALL_AREA : r.kind === "notyet" ? NOT_YET : null);
   const yearNum = (year: number) => (
     <span className="num" data-src={yearSrc(year)}>
       {format(year, "year")}
@@ -726,10 +765,24 @@ export default function ExploreView(props: Props) {
     return entries;
   }, [tableOpen, rows, names, reading, sort]);
 
+  // A new series or measure keeps the year when it can; the real value moves it to its first
+  // year, and says so. Choosing a year clears that line.
   const setSeries = (id: string) => {
     const next = series.find((s) => s.id === id);
-    if (next) setView((v) => ({ ...v, series: id, year: clampYear(next, v.year) }));
+    if (!next) return;
+    const changed = withYearFor(next, view, { series: id, measure: view.measure });
+    setView(changed.view);
+    setMoved(changed.moved);
   };
+  const setMeasure = (measure: Measure) => {
+    const changed = withYearFor(option, view, { series: view.series, measure });
+    setView(changed.view);
+    setMoved(changed.moved);
+  };
+  function setYear(year: number) {
+    setMoved(null);
+    setView((v) => ({ ...v, year }));
+  }
   const legendLabel = (k: number) => {
     const b = (i: number) => (
       <span className="num" data-src={breakSrc(i)}>
@@ -759,48 +812,63 @@ export default function ExploreView(props: Props) {
           {isYield ? "Quanto rende" : "Onde se produz"}{" "}
           <span className="explore__term">
             {isYield ? `${option.article}\u00a0` : null}
-            <select ref={seriesSelect} aria-label="Cultura" value={view.series} onChange={(e) => setSeries(e.target.value)}>
-              {series.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.phrase}
-                </option>
-              ))}
-            </select>
+            <span className="explore__select">
+              <select ref={seriesSelect} aria-label="Cultura" value={view.series} onChange={(e) => setSeries(e.target.value)}>
+                {series.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.phrase}
+                  </option>
+                ))}
+              </select>
+            </span>
             ,
           </span>{" "}
           <span className="explore__term">
-            <select
-              ref={measureSelect}
-              aria-label="Medida"
-              value={view.measure}
-              onChange={(e) => setView((v) => ({ ...v, measure: e.target.value as Measure }))}
-            >
-              {(Object.keys(MEASURE_PHRASE) as Measure[]).map((m) => (
-                <option key={m} value={m}>
-                  {MEASURE_PHRASE[m](option)}
-                </option>
-              ))}
-            </select>
+            <span className="explore__select">
+              <select
+                ref={measureSelect}
+                aria-label="Medida"
+                value={view.measure}
+                onChange={(e) => setMeasure(e.target.value as Measure)}
+              >
+                {(Object.keys(MEASURE_PHRASE) as Measure[]).map((m) => (
+                  <option key={m} value={m}>
+                    {MEASURE_PHRASE[m](option)}
+                  </option>
+                ))}
+              </select>
+            </span>
             ,
           </span>{" "}
           <span className="explore__term">
             em{"\u00a0"}
-            <select
-              ref={yearSelect}
-              aria-label="Ano"
-              value={view.year}
-              onChange={(e) => setView((v) => ({ ...v, year: Number(e.target.value) }))}
-            >
-              {years.map((year) => (
-                <option key={year} value={year} data-src={yearSrc(year)}>
-                  {format(year, "year")}
-                </option>
-              ))}
-            </select>
+            <span className="explore__select">
+              <select ref={yearSelect} aria-label="Ano" value={view.year} onChange={(e) => setYear(Number(e.target.value))}>
+                {years.map((year) => (
+                  <option key={year} value={year} data-src={yearSrc(year)}>
+                    {format(year, "year")}
+                  </option>
+                ))}
+              </select>
+            </span>
           </span>
         </h1>
-        <p className="explore__hint small">
-          Os termos sublinhados são os filtros: clique para trocar a cultura, a medida ou o ano.
+        {/* Said once when a link or a choice of measure moved the year (the measure starts
+            later than the series); empty otherwise, but in the page, so it is announced. */}
+        <p className="explore__notice small" role="status">
+          {moved && late ? (
+            <>
+              {late.subject(option)} começa em{" "}
+              <span className="num" data-src={firstSrc}>
+                {format(moved.to, "year")}
+              </span>
+              : o mapa passou de {yearNum(moved.from)} para{" "}
+              <span className="num" data-src={firstSrc}>
+                {format(moved.to, "year")}
+              </span>
+              .
+            </>
+          ) : null}
         </p>
       </div>
 
@@ -898,10 +966,10 @@ export default function ExploreView(props: Props) {
                 {activeUf ? <span className="mono"> {activeUf}</span> : null}
                 <br />
                 {readingText(activeReading)} em {yearNum(view.year)}
-                {activeReading.kind === "small" ? (
+                {flag(activeReading) ? (
                   <>
                     <br />
-                    <span className="explore__flag">{SMALL_AREA}</span>
+                    <span className="explore__flag">{flag(activeReading)}</span>
                   </>
                 ) : null}
               </div>
@@ -919,45 +987,42 @@ export default function ExploreView(props: Props) {
                 </>
               ) : null}
             </p>
-            {valueUnavailable && (
-              <p className="explore__status explore__status--note small">
-                O valor real da produção só existe a partir de{" "}
-                <span
-                  className="num"
-                  data-src={`${fileOf(option.id, "production_value_real_thousand_brl")}#/years/0|year`}
-                >
-                  {format(option.valueFirstYear, "year")}
-                </span>
-                .
-              </p>
-            )}
           </div>
           <p className="visually-hidden" aria-live="polite">
             {selected !== null && activeReading && activeName ? (
               <>
                 {activeName}, {activeUf}: {readingText(activeReading)} em {yearNum(view.year)}
-                {activeReading.kind === "small" ? `, ${SMALL_AREA}` : null}
+                {flag(activeReading) ? `, ${flag(activeReading)}` : null}
               </>
             ) : null}
           </p>
 
           <div className="explore__legend">
             <p className="explore__legend-title small">
-              {measureLabel}, em {unit}
+              {measureLabel}, em{" "}
               {view.measure === "production_value_real_thousand_brl" ? (
                 <>
-                  {" "}
-                  de{" "}
+                  reais de{" "}
                   <span className="num" data-src={props.baseYear.src}>
                     {props.baseYear.text}
                   </span>
                 </>
-              ) : null}
+              ) : (
+                unit
+              )}
             </p>
+            {late ? (
+              <p className="explore__legend-note small">
+                {late.subject(option)} começa em{" "}
+                <span className="num" data-src={firstSrc}>
+                  {format(range.first, "year")}
+                </span>
+                : antes disso, {late.why}.
+              </p>
+            ) : null}
             {mode === "circles" ? (
               <ul className="legend legend--circles small" aria-label="Legenda do mapa">
-                {!valueUnavailable &&
-                  circleRefs.map((value, k) => (
+                {circleRefs.map((value, k) => (
                     <li key={value}>
                       <svg
                         className="legend__circle"
@@ -968,19 +1033,23 @@ export default function ExploreView(props: Props) {
                         <circle cx="1" cy="1" r="0.96" />
                       </svg>
                       <span className="num" data-src={circleSrc(k)}>
-                        {format(value, "int")}
+                        {format(value, refFormat)}
                       </span>
                     </li>
                   ))}
-                {!valueUnavailable && (
+                <li>
+                  <span className="legend__swatch legend__swatch--seq1" aria-hidden="true" />
+                  sem círculo: não produziu
+                </li>
+                {needsFirstYears ? (
                   <li>
-                    <span className="legend__swatch legend__swatch--seq1" aria-hidden="true" />
-                    sem círculo: não produziu
+                    <span className="legend__swatch legend__swatch--notyet" aria-hidden="true" />
+                    município ainda não existia
                   </li>
-                )}
+                ) : null}
                 <li>
                   <span className="legend__swatch legend__swatch--hatch" aria-hidden="true" />
-                  {valueUnavailable ? "não disponível" : "sem dado"}
+                  sem dado
                 </li>
               </ul>
             ) : (
@@ -999,6 +1068,12 @@ export default function ExploreView(props: Props) {
                   <span className="legend__swatch legend__swatch--dots" aria-hidden="true" />
                   área colhida pequena demais para comparar
                 </li>
+                {needsFirstYears ? (
+                  <li>
+                    <span className="legend__swatch legend__swatch--notyet" aria-hidden="true" />
+                    município ainda não existia
+                  </li>
+                ) : null}
                 <li>
                   <span className="legend__swatch legend__swatch--hatch" aria-hidden="true" />
                   sem dado
@@ -1025,7 +1100,7 @@ export default function ExploreView(props: Props) {
             </button>
             <div className="timeline__track">
               <div className="timeline__labels meta" aria-hidden="true">
-                {yearNum(option.firstYear)}
+                {yearNum(range.first)}
                 <span>ano</span>
                 {yearNum(option.lastYear)}
               </div>
@@ -1037,7 +1112,7 @@ export default function ExploreView(props: Props) {
                 aria-label="Ano"
                 aria-valuetext={format(view.year, "year")}
                 data-src={yearSrc(view.year)}
-                onChange={(e) => setView((v) => ({ ...v, year: option.firstYear + Number(e.target.value) }))}
+                onChange={(e) => setYear(range.first + Number(e.target.value))}
               />
             </div>
           </div>
@@ -1119,11 +1194,13 @@ export default function ExploreView(props: Props) {
           ufs={ufs}
           files={files}
           measureLabel={measureLabel}
+          seriesPhrase={option.phrase}
           unit={unit}
           firstYear={option.firstYear}
+          fromYear={range.first}
           defaultRanking={props.defaultRanking}
           onFocus={(uf) => setView((v) => ({ ...v, uf }))}
-          onYear={(year) => setView((v) => ({ ...v, year }))}
+          onYear={setYear}
         />
       </div>
     </div>

@@ -20,6 +20,8 @@ export interface Municipalities {
     municipality_id: number[];
     municipality_name: string[];
     state_abbreviation: string[];
+    /** First year with data in the PAM: before it, the municipality did not exist yet. */
+    first_pam_year: (number | null)[];
   };
 }
 
