@@ -48,7 +48,7 @@ jobs:
     runs-on: ubuntu-24.04
     # Ceiling for the whole job (GitHub's default is 360 minutes). The network-bound and
     # browser steps carry tighter limits of their own, so a stall fails within minutes.
-    timeout-minutes: 15
+    timeout-minutes: 24
     env:
       # actions/cache and setup-node wait up to 10 minutes on a stalled cache segment by
       # default; give up sooner and carry on as a cache miss.
@@ -107,7 +107,7 @@ jobs:
       # Playwright's globalTimeout (playwright.config.ts) stops the run first, so the
       # report is still printed.
       - name: End-to-end and accessibility tests (Playwright + axe)
-        timeout-minutes: 6
+        timeout-minutes: 10
         run: npm run e2e
 
       # Lighthouse CI runs the runner image's Google Chrome.

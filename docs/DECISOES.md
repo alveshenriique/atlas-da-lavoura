@@ -337,11 +337,21 @@ falha ao abrir, em segundos, dizendo qual falta. O Lighthouse CI usa o Google Ch
 própria imagem. O cache dos navegadores foi descartado porque a documentação do
 Playwright não o recomenda: restaurar leva quase o mesmo tempo que baixar. Quanto aos
 limites de tempo: o padrão do GitHub é 360 minutos por job, então cada passo de rede ou
-de navegador ganhou o seu próprio `timeout-minutes` (de 3 a 6 minutos), e o job tem um
-teto de 15. A restauração dos caches desiste de um segmento travado em 2 minutos, em vez
+de navegador ganhou o seu próprio `timeout-minutes` (de 3 a 10 minutos), e o job tem um
+teto de 24. A restauração dos caches desiste de um segmento travado em 2 minutos, em vez
 de 10, e segue como cache miss. O download do pacote de dados aborta em 2 minutos. No
-CI, o Playwright roda com um worker e tem `globalTimeout` de 4 minutos, abaixo do limite
-do passo, para parar sozinho e ainda imprimir o relatório.
+CI, o Playwright roda com um worker e tem `globalTimeout` de 8 minutos, abaixo do limite
+do passo (10), para parar sozinho e ainda imprimir o relatório.
+
+Os limites do Playwright foram revistos em 2026-11-18, porque a suíte cresce a cada etapa.
+O passo levava 90 s no começo da parte A do Explorar e chegou a 135 s com 196 testes,
+deixando ao `globalTimeout` de 4 minutos uma folga de 44%. Localmente, com a máquina
+carregada, ele já tinha estourado duas vezes. O critério é manter folga de pelo menos 50%
+sobre a execução mais lenta no CI. O `globalTimeout` passou a 8 minutos (folga de 72%) e
+o passo a 10, para o Playwright ainda parar antes do GitHub. O job seguiu a regra dos
+outros workflows: cerca de 3 vezes a execução mais lenta, que foi de 477 s, e acima da
+soma dos piores casos dos passos. Por isso passou de 15 a 24 minutos. Os passos do
+Lighthouse (no máximo 164 s contra 6 minutos, folga de 54%) não mudaram.
 
 **Dependências do site: Dependabot e vulnerabilidades atuais.** O Dependabot também
 acompanha o ecossistema npm de `web/`, semanalmente, com o mesmo prefixo de commit das
