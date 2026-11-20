@@ -1124,3 +1124,21 @@ Os arquivos são gerados por `scripts/make_web_icons.py` a partir do `identity.p
 - **`apple-touch-icon.png`:** a versão grande clara em 180 px, sem cantos arredondados, porque o iOS arredonda sozinho.
 
 O layout comum declara os três arquivos. O estilo dentro do SVG fica sob a CSP do site quando o arquivo é aberto, então o gerador do `_headers` passou a calcular o hash dos blocos `<style>` dos arquivos SVG, como já fazia com os do HTML. O teste abre o SVG sob a política e não aceita nenhuma violação; sem o hash, ele falha. Os ícones ficam em cache por um dia, como a imagem de prévia. Cada página baixa o `favicon.svg`, cerca de 1 KB com os cabeçalhos, e todas seguem dentro do orçamento.
+
+## Orçamento do Explorar medido no ar (fase 12)
+
+O orçamento era conferido só localmente, pelo Lighthouse CI. Ele serve o build com o próprio servidor, com gzip e sem aplicar o `_headers`. Em 2026-11-20, a transferência do Explorar foi medida no site no ar, com o Google Chrome, sem cache e na visão padrão, contando cabeçalhos e corpo de cada resposta. A versão publicada, a da `main` antes desta rodada, transferia 743.531 bytes. A mesma versão medida localmente dava 714.162. O orçamento é de 716.800 bytes, então o site no ar já passava dele em cerca de 27 KB.
+
+A diferença vem de três fontes:
+- **Compressão:** a Cloudflare responde ao Chrome com zstd no nível 3, que comprime pior que o gzip local: +5,3 KB na malha, +5,6 KB na matriz e +2,8 KB no React.
+- **Cabeçalhos:** cada resposta leva cerca de 1,3 KB, porque a CSP e os outros cabeçalhos de documento vão também nos dados, fontes e JavaScript. Localmente são cerca de 0,3 KB. Em 13 requisições, isso soma cerca de 13 KB.
+- **Ícone:** sem ícone declarado, o Chrome pedia `/favicon.ico` e recebia a página 404, quase 5 KB. O ícone do site resolve isso.
+
+A malha nacional (326 KB no ar) e a matriz do ano padrão (213 KB) são três quartos da página. Em seguida vêm o React (69 KB) e as três fontes (65 KB). As decisões, de 2026-11-20:
+- **Entrega e medição no ar (aprovada, num PR próprio):** os cabeçalhos de documento (CSP e afins) passam a ir só no HTML e no SVG. A zona passa a preferir brotli, se a regra de compressão valer para as respostas do Worker, o que precisa ser confirmado antes. Medido, o brotli no nível 5 deixaria a malha em 302 KB e a matriz em 201 KB. A verificação depois do deploy passa a medir a transferência real do Explorar e das outras páginas no ar, por enquanto como aviso.
+- **Matriz por ano (aprovada, no ciclo de dados):** a visão padrão passa a baixar só o ano que mostra. Só a coluna de 2025 tem 8.084 bytes com gzip, contra 194.806 da matriz inteira, cerca de −200 KB. Os outros anos carregam conforme a linha do tempo pede. Os totais do Brasil por ano (383 bytes) vêm junto. Entram no mesmo ciclo o `collected_at` e os totais por UF. O ponto representativo sai do ciclo: o cálculo no navegador fica, porque publicá-lo acrescentaria bytes e só pouparia o código do cálculo.
+- **Preact no lugar do React (descartada):** pouparia cerca de 55 KB, segundo a documentação do Preact, mas com a matriz por ano a folga volta e o React fica.
+
+O Explorar segue congelado, mas o gatilho para descongelar passa a ser a matriz por ano, e não os totais por UF. Os totais por UF só ajudam nas outras visões, que hoje baixam os 27 arquivos dos estados.
+
+**Ordem (corrigida pelo usuário no mesmo dia):** num primeiro momento, o ciclo de dados com a matriz por ano subiu para antes da página do município. Ele voltou para depois das páginas. O excesso de cerca de 4% sobre o orçamento é uma melhoria de desempenho a fazer, e não um erro que bloqueia o trabalho. A ordem fica: (1) a branch do Explorar, segunda rodada, e do ícone; (2) o PR da entrega e do orçamento medido no ar; (3) as páginas Município e Método e a parte B da Análise, cada uma com uma rodada de revisão; (4) o ciclo de dados com a matriz por ano, o `collected_at` e os totais por UF; (5) a lista de acabamento, a revisão da paleta e o fechamento. O Explorar segue congelado até o item 4, que continua sendo o gatilho.
