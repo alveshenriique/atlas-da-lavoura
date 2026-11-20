@@ -1100,3 +1100,27 @@ O formato `pct` passou a agrupar milhares ("1.493%", e não "1493%"). O teste re
 - o ícone do site, cerca de 1 KB, uma requisição por página (ver "Ícone do site").
 
 A folga pequena reforça o congelamento do Explorar até o ciclo de dados com a matriz por ano.
+
+## Ícone do site (fase 12)
+
+O ícone é "abaixo da tendência", tirado do gráfico do achado: barras em torno de uma linha de base, e a de seca abaixo dela. O desenho fica numa grade de 64 × 64 com cantos arredondados (raio 14). A versão grande, a partir de 32 px, tem quatro barras e a linha de base, e a terceira barra, na cor da seca, desce abaixo da linha. A versão pequena, de 16 px, tem três barras mais largas e nenhuma linha de base, porque a 16 px uma linha de 1,5 unidade some.
+
+As cores vêm de `identity.ICON`, uma variante por tema do navegador:
+- **Tema claro:** fundo na cor do texto do tema claro, barras no passo claro da escala sequencial e linha de base no neutro.
+- **Tema escuro:** as cores se invertem, com fundo claro e barras escuras.
+
+A barra de seca usa a variante escura da cor da seca (#a36c22) nas duas versões. A variante clara (#895819) tem contraste de 2,85:1 sobre o fundo escuro do ícone, abaixo do mínimo de 3:1 para elementos gráficos. A regra da identidade é que a variante de uma cor acompanha o fundo em que ela está. O verificador da identidade (`check_icon`) confere cada elemento contra o fundo do ícone nas duas variantes:
+
+| Variante | Barras | Seca | Linha de base | Distância seca × barras |
+|---|---|---|---|---|
+| Clara | 14,7:1 | 3,85:1 | 5,5:1 | 44 |
+| Escura | 14,5:1 | 3,85:1 | 4,8:1 | 41 |
+
+A distância é a menor em CAM02-UCS entre visão normal e as três deficiências simuladas. Um teste negativo põe a seca clara no fundo escuro e espera a falha.
+
+Os arquivos são gerados por `scripts/make_web_icons.py` a partir do `identity.py`, sem cores escritas à mão. O teste `tests/test_web_icons.py` falha se eles divergirem: compara o texto do SVG e os pixels dos bitmaps, e não os bytes, que mudam com a versão do Pillow. São três arquivos:
+- **`favicon.svg`:** traz as duas versões e as duas variantes. Um CSS dentro do próprio SVG escolhe a versão pequena até 24 px de largura e a variante escura sob `prefers-color-scheme`. As barras de cada cor são um único `path`, com classes de uma letra, e o arquivo tem 655 bytes.
+- **`favicon.ico`:** a versão grande clara em 32 px, de reserva para navegadores sem ícone em SVG.
+- **`apple-touch-icon.png`:** a versão grande clara em 180 px, sem cantos arredondados, porque o iOS arredonda sozinho.
+
+O layout comum declara os três arquivos. O estilo dentro do SVG fica sob a CSP do site quando o arquivo é aberto, então o gerador do `_headers` passou a calcular o hash dos blocos `<style>` dos arquivos SVG, como já fazia com os do HTML. O teste abre o SVG sob a política e não aceita nenhuma violação; sem o hash, ele falha. Os ícones ficam em cache por um dia, como a imagem de prévia. Cada página baixa o `favicon.svg`, cerca de 1 KB com os cabeçalhos, e todas seguem dentro do orçamento.

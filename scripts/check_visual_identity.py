@@ -108,6 +108,7 @@ def check() -> tuple[list[str], list[tuple]]:
                 failures.append(f"{theme}: {a.role} x {b.role} min ΔE {worst:.1f}")
         failures.extend(check_sequential(theme, rows))
     failures.extend(check_site_backgrounds()[0])
+    failures.extend(check_icon()[0])
     failures.extend(check_typefaces()[0])
     return failures, rows
 
@@ -130,6 +131,25 @@ def check_site_backgrounds() -> tuple[list[str], list[tuple]]:
         rows.append((theme, "site", "sequential end", strong, vi.MIN_GRAPHIC_CONTRAST))
         if strong < vi.MIN_GRAPHIC_CONTRAST:
             failures.append(f"{theme} site: sequential strong end contrast {strong:.2f}")
+    return failures, rows
+
+
+def check_icon() -> tuple[list[str], list[tuple]]:
+    """The site icon: each mark against the icon's background, in both variants, and the
+    drought bar distinguishable from the other bars under every simulated deficiency."""
+    failures, rows = [], []
+    for theme, colours in vi.ICON.items():
+        bg = colours["background"]
+        for mark in ("bar", "dry", "baseline"):
+            value = contrast(colours[mark], bg)
+            rows.append((theme, mark, value))
+            if value < vi.MIN_GRAPHIC_CONTRAST:
+                minimum = vi.MIN_GRAPHIC_CONTRAST
+                failures.append(f"{theme} icon: {mark} contrast {value:.2f} < {minimum}")
+        worst = min(distances(colours["dry"], colours["bar"]).values())
+        rows.append((theme, "dry x bar ΔE", worst))
+        if worst < vi.MIN_DISTINCT_DELTA_E:
+            failures.append(f"{theme} icon: dry x bar min ΔE {worst:.1f}")
     return failures, rows
 
 
@@ -313,6 +333,9 @@ def main() -> None:
     print("site backgrounds (theme, surface, colour, contrast, minimum)")
     for theme, surface, role, value, minimum in check_site_backgrounds()[1]:
         print(f"  {theme:5s} {surface:4s} {role:15s} {value:5.2f}:1 (min {minimum})")
+    print("icon (variant, mark, contrast against the icon background or min ΔE)")
+    for theme, mark, value in check_icon()[1]:
+        print(f"  {theme:5s} {mark:14s} {value:5.2f}")
     print("typefaces (role, file, version, x-height, zero glyph, zero contours)")
     for role, name, version, x_height, zero, contours in check_typefaces()[1]:
         print(f"  {role:8s} {name:28s} {version:14s} x {x_height:.3f} em  {zero} ({contours})")

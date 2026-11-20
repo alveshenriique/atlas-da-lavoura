@@ -126,6 +126,29 @@ SEQUENTIAL = {
     "dark": ("#211d1a", "#47423e", "#6c6761", "#948e87", "#bfb9b0", "#f0eadf"),
 }
 
+# --- Site icon ("abaixo da tendência"). ------------------------------------------------------
+# From the chart of the finding: bars around a baseline, the drought one below it. One variant
+# per browser theme; the dark variant swaps the colours (light background, dark bars). The
+# drought bar takes the dark-theme variant of DRY in both: the light one has 2.85:1 on the
+# icon's dark background, under MIN_GRAPHIC_CONTRAST. Validated by
+# scripts/check_visual_identity.py (each mark >= MIN_GRAPHIC_CONTRAST against its background,
+# drought and bars >= MIN_DISTINCT_DELTA_E apart under every simulated deficiency); the files
+# come from scripts/make_web_icons.py.
+ICON = {
+    "light": {
+        "background": TEXT.light,
+        "bar": SEQUENTIAL["light"][0],
+        "dry": DRY.dark,
+        "baseline": NEUTRAL.light,
+    },
+    "dark": {
+        "background": TEXT.dark,
+        "bar": SEQUENTIAL["dark"][0],
+        "dry": DRY.dark,
+        "baseline": NEUTRAL.dark,
+    },
+}
+
 # --- Typography. -----------------------------------------------------------------------------
 # Three voices of one superfamily, IBM Plex (github.com/IBM/plex, SIL OFL 1.1): serif for the
 # titles, sans for the running text, mono for numbers, labels and metadata. Static files from

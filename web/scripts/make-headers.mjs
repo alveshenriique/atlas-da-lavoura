@@ -2,7 +2,8 @@
 // assets read this file; it is not served). Runs after `astro build` (npm run build).
 //
 // The Content-Security-Policy is built from the HTML that is about to be published: every
-// inline <script> and <style> of every page is hashed (sha256), and script-src allows only
+// inline <script> and <style> of every page (and the <style> inside the SVG files, such as the
+// site icon, which carries its own dark variant) is hashed (sha256), and script-src allows only
 // the site's own files and those hashes, never 'unsafe-inline'. Style attributes are the
 // one concession (style-src-attr 'unsafe-inline'; docs/DECISOES.md, "Publicação do site").
 // The build fails when a page carries something the policy would block anyway (an inline
@@ -111,6 +112,9 @@ export function renderHeaders({ csp }) {
     // Names without a hash: cached for a while, never forever.
     rule("/fonts/*", cache(CACHE.fonts)),
     rule("/og/*", cache(CACHE.images)),
+    // The site icon (no hash in the names): a day, like the preview image.
+    rule("/favicon.*", cache(CACHE.images)),
+    rule("/apple-touch-icon.png", cache(CACHE.images)),
     // Preview versions (Version URLs) on workers.dev stay out of search engines.
     rule("https://:version.:account.workers.dev/*", ["X-Robots-Tag: noindex"]),
   ];
@@ -132,9 +136,9 @@ export function checkLimits(text) {
   return problems;
 }
 
-function htmlFiles(dir) {
+function htmlFiles(dir, extension = ".html") {
   return readdirSync(dir, { recursive: true, withFileTypes: true })
-    .filter((e) => e.isFile() && e.name.endsWith(".html"))
+    .filter((e) => e.isFile() && e.name.endsWith(extension))
     .map((e) => join(e.parentPath, e.name));
 }
 
@@ -144,7 +148,7 @@ export function writeHeaders(dist) {
   const styles = new Set();
   const problems = [];
   const files = htmlFiles(dist);
-  for (const file of files) {
+  for (const file of [...files, ...htmlFiles(dist, ".svg")]) {
     const found = inlineBlocks(readFileSync(file, "utf8"));
     for (const s of found.scripts) scripts.add(hashSource(s));
     for (const s of found.styles) styles.add(hashSource(s));
