@@ -17,7 +17,9 @@
 // yield of one cell; the yield operations read the production matrix of the reference and
 // the harvested-area matrix next to it (siblingFile), as the data contract defines yield;
 // `firstyear` is the first year of the file's years in which any municipality of the
-// matrix has a value (where a measure starts later than its series).
+// matrix has a value (where a measure starts later than its series). `change` is the
+// relative change from a start value to the end value at the same place (a pointer to
+// `.../start_<field>/<i>` reads `.../end_<field>/<i>`): end / start − 1.
 // For the territories of the place files: `share` is a value over Brazil's at the same
 // pointer of places/country.json, and `areayield` the yield of a territory, its production
 // over the harvested area at the same place of the file (sum over sum, never a mean of
@@ -43,7 +45,8 @@ export type Op =
   | "share"
   | "areayield"
   | "yield"
-  | "firstyear";
+  | "firstyear"
+  | "change";
 
 export interface Ref {
   file: string;
@@ -67,6 +70,7 @@ const OPS = new Set<string>([
   "areayield",
   "yield",
   "firstyear",
+  "change",
 ]);
 const WITH_ARGUMENT = new Set<string>(["count", "circle", "ybreak"]);
 const NEEDS_ARGUMENT = new Set<string>(["circle", "ybreak"]);
@@ -258,6 +262,16 @@ export function resolveRef(
         yieldBreaksCache.set(production, (breaks = classBreaks(pooledPositives(yields))));
       }
       return nth(breaks, ref);
+    }
+    case "change": {
+      if (!/\/start_[a-z_]+\/\d+$/.test(ref.pointer)) {
+        throw new Error(`${serializeRef(ref)} must point at a start_ value`);
+      }
+      const end = getPointer(doc, ref.pointer.replace("/start_", "/end_"));
+      if (typeof node !== "number" || typeof end !== "number" || node === 0) {
+        throw new Error(`${serializeRef(ref)} has no change`);
+      }
+      return end / node - 1;
     }
     case "firstyear": {
       const matrix = matrixOf(node, ref);

@@ -13,7 +13,7 @@ const map = (page: Page) => page.locator(".explore__map");
 const ready = (page: Page) => expect(map(page)).toHaveAttribute("data-ready", "true");
 const panel = (page: Page) => page.locator(".explore-panel");
 const filter = (page: Page, name: "Cultura" | "Medida" | "Ano") =>
-  page.getByRole("heading", { level: 1 }).getByRole("combobox", { name });
+  page.getByRole("group", { name: "O que o mapa mostra" }).getByRole("combobox", { name });
 const rows = (page: Page) => panel(page).locator(".ranking__row");
 
 interface Matrix {
@@ -53,8 +53,8 @@ test.describe("the side panel", () => {
   test("follows the series, the measure and the year of the map", async ({ page, request }) => {
     await page.goto("/explorar/");
     await ready(page);
-    await filter(page, "Cultura").selectOption({ label: "milho" });
-    await filter(page, "Medida").selectOption({ label: "em hectares colhidos" });
+    await filter(page, "Cultura").selectOption({ label: "Milho" });
+    await filter(page, "Medida").selectOption({ label: "Área colhida" });
     await filter(page, "Ano").selectOption("2000");
     await ready(page);
     await expect(panel(page).locator(".explore-panel__kicker")).toHaveText(/^Brasil\s+·\s+milho\s+·\s+2000$/);
@@ -172,7 +172,7 @@ test.describe("the side panel", () => {
     await ready(page);
     await expect(rows(page).first()).toContainText("Mato Grosso");
     await panel(page).getByRole("button", { name: "Mostrar todas as UFs" }).click();
-    await filter(page, "Cultura").selectOption({ label: "café arábica" });
+    await filter(page, "Cultura").selectOption({ label: "Café arábica" });
     await filter(page, "Ano").selectOption("2012");
     await ready(page);
     await expect(panel(page).locator(".explore-panel__kicker")).toHaveText(/café arábica\s+·\s+2012$/);
@@ -214,7 +214,9 @@ test.describe("loading below the first screen", () => {
     await ready(page);
     await page.waitForTimeout(500);
     expect(requested.filter((p) => p.includes("/places/state/"))).toEqual([]);
-    await panel(page).scrollIntoViewIfNeeded();
+    // On a phone the panel is split: its number under the title, its series and states (the
+    // body) after the map.
+    await panel(page).locator(".explore-panel__body").scrollIntoViewIfNeeded();
     await expect(rows(page).first()).toBeVisible();
     expect(requested.filter((p) => p.includes("/places/state/")).length).toBe(27);
   });
@@ -277,29 +279,35 @@ test.describe("the figures of the page", () => {
 });
 
 test.describe("the decomposition", () => {
-  test("splits the growth of each crop in area and yield, coffee only after the break", async ({
+  test("shows how much production, area and yield changed, each bar on the side of its sign", async ({
     page,
     request,
   }) => {
     await page.goto("/explorar/");
+    const base = await page.evaluate(() => document.documentElement.dataset.dataBase ?? "");
+    const block = ((await (await request.get(`${base}analysis.json`)).json()) as {
+      growth_decomposition: Record<string, (number | string | null)[]>;
+    }).growth_decomposition;
+    // The change of a field in a row of the decomposition, from the data: end / start − 1.
+    const changeOf = (field: string, row: number) =>
+      Number(block[`end_${field}`]?.[row]) / Number(block[`start_${field}`]?.[row]) - 1;
     const figure = page.locator("#figura-2");
     await expect(figure.locator(".growth__crop")).toHaveText(["Soja", "Milho", "Café beneficiado"]);
     const coffeeRows = figure.locator(".growth__group").nth(2).locator(".growth__period");
     for (const text of await coffeeRows.allTextContents()) {
       expect(Number(text.slice(0, 4))).toBeGreaterThanOrEqual(2002);
     }
-    // Next to coffee, why its area is negative and its yield more than the whole growth: the
-    // harvested area at both ends, cited from the decomposition, and smaller at the end.
+    // The whole period of each crop is written above its bars.
+    await expect(figure.locator(".growth__summary")).toHaveCount(3);
+    // Next to coffee: its harvested area at both ends, cited and smaller at the end.
     const note = figure.locator(".growth__group").nth(2).locator(".growth__note");
     await expect(note).toContainText("A área colhida de café diminuiu em todos os períodos");
-    await expect(note).toContainText("mais do que todo o crescimento");
+    await expect(note).toContainText("a produtividade subiu mais do que a área caiu");
     const areas = note.locator("data[data-src*='_harvested_area_ha/']");
-    await expect(areas).toHaveCount(2);
     const [from, to] = await areas.evaluateAll((els) => els.map((el) => Number(el.getAttribute("value"))));
     expect(to).toBeLessThan(from ?? 0);
-    // Two bars per period, area and yield, both from the same zero: each goes to the right of
-    // zero when its share is positive and to the left when negative, as the data say, and its
-    // label is on its own line, after its end (or after zero, for a bar going left).
+    // Three bars per period, from the same zero: each goes right when its change in the data
+    // is positive and left when negative, with its label on its own line.
     const lines = await figure.locator(".growth__row").evaluateAll((rowEls) =>
       rowEls.map((row) => {
         const zero = row.querySelector(".growth__zero")?.getBoundingClientRect().left ?? Number.NaN;
@@ -309,42 +317,38 @@ test.describe("the decomposition", () => {
           const box = line.getBoundingClientRect();
           return {
             factor: line.getAttribute("data-factor"),
-            share: Number(line.querySelector(".growth__value data")?.getAttribute("value")),
+            src: line.querySelector(".growth__value data")?.getAttribute("data-src") ?? "",
             zero,
             left: bar?.left ?? Number.NaN,
             right: bar?.right ?? Number.NaN,
-            labelLeft: label?.left ?? Number.NaN,
-            // On its own line: the label's middle is inside the line of its bar.
             inLine: !!label && (label.top + label.bottom) / 2 > box.top && (label.top + label.bottom) / 2 < box.bottom,
           };
         });
       }),
     );
     expect(lines.length).toBeGreaterThan(0);
-    for (const pair of lines) {
-      expect(pair.map((l) => l.factor)).toEqual(["area", "yield"]);
-      for (const l of pair) {
-        expect(Number.isFinite(l.share), JSON.stringify(l)).toBe(true);
-        if (l.share > 0) {
+    for (const bars of lines) {
+      expect(bars.map((l) => l.factor)).toEqual(["production", "area", "yield"]);
+      for (const l of bars) {
+        const match = /\/start_([a-z_]+)\/(\d+)!change/.exec(l.src);
+        expect(match, l.src).not.toBeNull();
+        const expected = changeOf(match?.[1] ?? "", Number(match?.[2]));
+        if (expected > 0) {
           expect(Math.abs(l.left - l.zero), JSON.stringify(l)).toBeLessThan(1.5);
           expect(l.right).toBeGreaterThan(l.zero);
-          expect(l.labelLeft).toBeGreaterThanOrEqual(l.right - 1);
-        } else if (l.share < 0) {
+        } else if (expected < 0) {
           expect(Math.abs(l.right - l.zero), JSON.stringify(l)).toBeLessThan(1.5);
           expect(l.left).toBeLessThan(l.zero);
-          expect(l.labelLeft).toBeGreaterThanOrEqual(l.zero - 1);
         }
         expect(l.inLine, JSON.stringify(l)).toBe(true);
       }
     }
-    // And the data say what the reading promises: coffee's area shrank, its yield grew.
-    const coffee = lines.slice(-3);
-    for (const [area, yieldPart] of coffee) {
-      expect(area?.share).toBeLessThan(0);
-      expect(yieldPart?.share).toBeGreaterThan(1);
-    }
+    // The table keeps the shares of each factor, one row per period, whole ones included.
     await figure.locator("details summary").click();
-    await expect(figure.locator("table tbody tr")).toHaveCount(await figure.locator(".growth__row").count());
+    await expect(figure.locator("table thead")).toContainText("Parte da área");
+    await expect(figure.locator("table tbody tr")).toHaveCount(
+      (await figure.locator(".growth__row").count()) + (await figure.locator(".growth__summary").count()),
+    );
     expect(await findUnsourcedNumbers(page, request)).toEqual([]);
   });
 });

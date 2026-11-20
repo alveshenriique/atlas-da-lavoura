@@ -52,7 +52,7 @@ export default function ExplorePanel(props: Props) {
   const { dataBase, view, ufs, files, measureLabel, unit } = props;
   const isYield = view.measure === "yield";
   const fmt = measureFormat(view.measure);
-  const rootRef = useRef<HTMLElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
   const [places, setPlaces] = useState<Record<string, PlaceFile>>({});
   const [expanded, setExpanded] = useState(false);
@@ -173,7 +173,10 @@ export default function ExplorePanel(props: Props) {
   const unitDetail = shortUnit !== unit ? `, em ${unit}` : "";
 
   return (
-    <aside ref={rootRef} className="explore__panel explore-panel" aria-label={`Painel: ${focusName}`}>
+    <aside className="explore__panel explore-panel" aria-label={`Painel: ${focusName}`}>
+      {/* The number of the territory apart from the rest: on a phone it comes right after the
+          title, and the series and the states after the map (explore.css). */}
+      <div className="explore-panel__head">
       <p className="explore-panel__kicker kicker">
         {focusName} · {props.seriesPhrase} ·{" "}
         <span className="num" data-src={yearSrc}>
@@ -201,7 +204,10 @@ export default function ExplorePanel(props: Props) {
         ) : null}
         {current.kind === "small" ? " · área colhida pequena demais para comparar" : null}
       </p>
+      </div>
 
+      {/* Observed for the state files: on a phone the aside has no box of its own. */}
+      <div className="explore-panel__body" ref={rootRef}>
       <SeriesChart
         points={series}
         year={view.year}
@@ -279,6 +285,7 @@ export default function ExplorePanel(props: Props) {
           {failed ? "Não foi possível carregar os estados." : visible ? "Carregando os estados…" : ""}
         </p>
       )}
+      </div>
     </aside>
   );
 }

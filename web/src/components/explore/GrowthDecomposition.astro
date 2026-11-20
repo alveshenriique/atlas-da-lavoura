@@ -1,21 +1,21 @@
 ---
-// "Mais terra ou mais produtividade?": where the growth of production came from, in Brazil,
-// for each crop, from the decomposition the data package publishes (analysis.json,
-// growth_decomposition): ln(production growth) = ln(area growth) + ln(yield growth), so the
-// two shares add up to the whole growth. A share can be negative (the area of coffee shrank
-// while production grew), so each period has two bars, area and yield, both from the same
-// zero and each with its own sign: what pushed growth up goes right, what held it back goes
-// left. (A single stacked bar with one negative part was correct, but read as an error.)
-// Each crop shows its whole period and the periods inside it;
-// coffee starts in 2005, after the 2002 unit break. It is Figura 2 of the page (the map is
-// Figura 1). Rendered at build time (SVG with
-// d3-scale), so the page downloads nothing for it and it works without JavaScript; the
-// browser renders it only when it nears the screen (content-visibility).
+// "Mais terra ou mais produtividade?": how much the harvested area, the yield and the
+// production of each crop changed in Brazil, period by period, from the decomposition the
+// data package publishes (analysis.json, growth_decomposition: the ends of each period are
+// three-year means). Each change is end / start − 1 (the provenance operation `change`).
+// The periods of about ten years are bars on one scale shared by every crop, from the same
+// zero: what grew goes right, what shrank goes left. The whole period of each crop (soybean
+// +1,493% from 1975 to 2024) would flatten every other bar, so it is written above its bars
+// instead. The shares of each factor in the growth (the log decomposition) stay in the table
+// of the figure. (Before: bars of the shares, abstract for a lay reader, and coffee's −96% and
+// +196% flattened the scale.) Coffee starts in 2005, after the 2002 unit break. It is Figura
+// 2 of the page (the map is Figura 1). Rendered at build time, so the page downloads nothing
+// for it and it works without JavaScript; the browser renders it only near the screen.
 import { scaleLinear } from "d3-scale";
 
 import { dataBasePath, loadDataFile } from "../../lib/data";
 import { format } from "../../lib/format";
-import { sourced, tick } from "../../lib/sourced";
+import { sourced } from "../../lib/sourced";
 import { bindShortWords } from "../../lib/typography";
 import Num from "../Num.astro";
 import Structural from "../Structural.astro";
@@ -52,62 +52,60 @@ const rowsOf = (crop: string) =>
       const span = (r: number) => num("end_anchor", r) - num("start_anchor", r);
       return span(b) - span(a) || num("start_anchor", a) - num("start_anchor", b);
     });
-const groups = CROPS.map((crop) => ({ ...crop, rows: rowsOf(crop.id) })).filter((g) => g.rows.length > 0);
-const allRows = groups.flatMap((g) => g.rows);
-if (allRows.length === 0) throw new Error("no national growth decomposition in analysis.json");
+const groups = CROPS.map((crop) => {
+  const rows = rowsOf(crop.id);
+  return { ...crop, whole: rows[0], parts: rows.slice(1) };
+}).filter((g) => g.whole !== undefined);
+if (groups.length === 0) throw new Error("no national growth decomposition in analysis.json");
 
-// One scale for every bar: from the most negative share to the largest positive one, and
-// always from 0 to 100% (the whole growth).
-const shares = allRows.flatMap((r) => [num("area_share_of_growth", r), num("yield_share_of_growth", r)]);
+// The three changes of a period, production first (the result), then its two factors.
+const FACTORS = [
+  { field: "production_t", name: "produção", key: "production" },
+  { field: "harvested_area_ha", name: "área", key: "area" },
+  { field: "yield_kg_ha", name: "produtividade", key: "yield" },
+] as const;
+const changeOf = (row: number, field: string) => num(`end_${field}`, row) / num(`start_${field}`, row) - 1;
+const change = (row: number, field: string) =>
+  sourced("analysis.json", `/growth_decomposition/start_${field}/${row}`, "spct", "change");
+const year = (row: number, column: string) =>
+  sourced("analysis.json", `/growth_decomposition/${column}/${row}`, "year");
+
+// One scale for every bar of the periods inside the whole ones, always including zero.
+const changes = groups.flatMap((g) => g.parts.flatMap((r) => FACTORS.map((f) => changeOf(r, f.field))));
 const x = scaleLinear()
-  .domain([Math.min(0, ...shares), Math.max(1, ...shares)])
+  .domain([Math.min(0, ...changes), Math.max(0, ...changes)])
   .range([0, 100]);
 // Positions in % of the bars' column, to two decimals (finer than a pixel at any width).
 const round = (v: number) => Math.round(v * 100) / 100;
-
-const FACTORS = [
-  { column: "area_share_of_growth", name: "área", key: "area" },
-  { column: "yield_share_of_growth", name: "produtividade", key: "yield" },
-] as const;
-
-/** A bar from zero to its share, and where its label goes: after the end of a bar that grows
- *  to the right, and just right of zero for one that goes left. */
-const barOf = (row: number, column: string) => {
-  const v = num(column, row);
-  const from = Math.min(0, v);
-  const to = Math.max(0, v);
+/** A bar from zero to its change, and where its label goes: after the end of a bar that
+ *  grows to the right, and just right of zero for one that goes left. */
+const barOf = (row: number, field: string) => {
+  const v = changeOf(row, field);
   return {
-    left: round(x(from)),
-    width: round(x(to) - x(from)),
-    label: round(x(to)),
+    left: round(x(Math.min(0, v))),
+    width: round(x(Math.max(0, v)) - x(Math.min(0, v))),
+    label: round(x(Math.max(0, v))),
   };
 };
 
-const share = (row: number, column: string) =>
-  sourced("analysis.json", `/growth_decomposition/${column}/${row}`, "pct");
-const year = (row: number, column: string) =>
-  sourced("analysis.json", `/growth_decomposition/${column}/${row}`, "year");
-const zeroTick = tick("analysis.json", "/growth_decomposition/area_share_of_growth", "pct", "within", 0);
-const wholeTick = tick("analysis.json", "/growth_decomposition/yield_share_of_growth", "pct", "within", 1);
-
-// The lead: the whole period of soybean and corn, and coffee's.
-const whole = (crop: string) => groups.find((g) => g.id === crop)?.rows[0];
-const soy = whole("soybean");
-const corn = whole("corn");
-const coffee = whole("coffee_processed");
+const byId = (crop: string) => groups.find((g) => g.id === crop);
+// Which factor grew more in a period, as the lead says it (decided by the data).
+const driver = (row: number) =>
+  changeOf(row, "harvested_area_ha") > changeOf(row, "yield_kg_ha") ? "área" : "produtividade";
+const soy = byId("soybean")?.whole;
+const corn = byId("corn")?.whole;
+const coffee = byId("coffee_processed")?.whole;
 const breakYear = sourced("catalog.json", "/parameters/coffee_unit_break_year", "year");
 
-// Coffee's shares look wrong to whoever does not know the method (area −96%, yield +196%):
-// production grew while the harvested area shrank, so the area's share is negative and the
-// yield's is more than the whole growth. A note next to its bars says so, with the area at
-// both ends of the whole period, and only while the published numbers say it.
+// Coffee: production grew while the harvested area shrank. A note next to its bars says so,
+// with the area at both ends of the whole period, and only while the published numbers say it.
 const shrank = (r: number) =>
-  num("ln_production_growth", r) > 0 && num("end_harvested_area_ha", r) < num("start_harvested_area_ha", r);
-const coffeeRows = groups.find((g) => g.id === "coffee_processed")?.rows ?? [];
+  changeOf(r, "production_t") > 0 && changeOf(r, "harvested_area_ha") < 0;
+const coffeeGroup = byId("coffee_processed");
 const coffeeNote =
   coffee !== undefined && shrank(coffee)
     ? {
-        everyPeriod: coffeeRows.every(shrank),
+        everyPeriod: [coffee, ...(coffeeGroup?.parts ?? [])].every(shrank),
         from: sourced("analysis.json", `/growth_decomposition/start_harvested_area_ha/${coffee}`, "int"),
         to: sourced("analysis.json", `/growth_decomposition/end_harvested_area_ha/${coffee}`, "int"),
       }
@@ -123,16 +121,14 @@ const coffeeNote =
       soy !== undefined && corn !== undefined && (
         <p class="growth__lead">
           De <Num n={year(soy, "start_anchor")} /> a <Num n={year(soy, "end_anchor")} />, a
-          expansão da área explica <Num n={share(soy, "area_share_of_growth")} /> do crescimento
-          da produção de soja. No milho, o ganho de produtividade explica{" "}
-          <Num n={share(corn, "yield_share_of_growth")} />.
-          {coffee !== undefined && num("area_share_of_growth", coffee) < 0 ? (
+          produção de soja cresceu mais pela {driver(soy)}, e a de milho, mais pela {driver(corn)}.
+          {coffee !== undefined && shrank(coffee) ? (
             <>
-              {" "}No café beneficiado, de <Num n={year(coffee, "start_anchor")} /> a{" "}
-              <Num n={year(coffee, "end_anchor")} />, a área encolheu, e todo o crescimento veio
-              da produtividade.
+              {" "}No café beneficiado, a área encolheu, e a produção cresceu porque a
+              produtividade subiu.
             </>
-          ) : null}
+          ) : null}{" "}
+          Os números de cada período estão na figura.
         </p>
       )
     }
@@ -141,44 +137,51 @@ const coffeeNote =
   <figure id="figura-2" class="growth__figure" aria-labelledby="figura-2-titulo">
     <div class="growth__head">
       <h3 id="figura-2-titulo" class="growth__title">
-        <Structural kind="figure" n={2} />. Origem do crescimento da produção, Brasil
+        <Structural kind="figure" n={2} />. Quanto mudaram a produção, a área e a produtividade, Brasil
       </h3>
       <ul class="legend small" aria-label="Legenda da figura">
-        <li><span class="legend__swatch growth__swatch--area" aria-hidden="true"></span>área</li>
-        <li>
-          <span class="legend__swatch growth__swatch--yield" aria-hidden="true"></span>produtividade
-        </li>
+        {
+          FACTORS.map((factor) => (
+            <li>
+              <span class={`legend__swatch growth__swatch--${factor.key}`} aria-hidden="true" />
+              {factor.name}
+            </li>
+          ))
+        }
       </ul>
     </div>
     <p class="growth__reading small">
-      Quanto do crescimento veio de cada fator, numa barra para cada um. À esquerda do zero, o
-      fator que encolheu.
+      Variação em cada período, entre as médias de três anos nas pontas. À esquerda do zero, o
+      que diminuiu.
     </p>
 
     <div class="growth__chart">
-      <div class="growth__axis" aria-hidden="true">
-        <span class="growth__tick" style={`left: ${x(0)}%`}>
-          <span class="num" data-src={zeroTick.src} data-value={zeroTick.carried}>{zeroTick.text}</span>
-        </span>
-        <span class="growth__tick" style={`left: ${x(1)}%`}>
-          <span class="num" data-src={wholeTick.src} data-value={wholeTick.carried}>{wholeTick.text}</span>
-        </span>
-      </div>
       {
         groups.map((group) => (
           <div class="growth__group">
             <h4 class="growth__crop">{group.name}</h4>
+            {group.whole !== undefined && (
+              <p class="growth__summary small">
+                De <Num n={year(group.whole, "start_anchor")} /> a <Num n={year(group.whole, "end_anchor")} />:{" "}
+                {FACTORS.map((factor, k) => (
+                  <>
+                    {k > 0 ? ", " : ""}
+                    {factor.name} <Num n={change(group.whole!, factor.field)} />
+                  </>
+                ))}
+                .
+              </p>
+            )}
             <ul class="growth__rows">
-              {group.rows.map((row, k) => (
-                <li class:list={["growth__row", { "growth__row--part": k > 0 }]}>
+              {group.parts.map((row) => (
+                <li class="growth__row">
                   <span class="growth__period meta">
                     <Num n={year(row, "start_anchor")} />–<Num n={year(row, "end_anchor")} />
                   </span>
                   <span class="growth__pair">
                     <span class="growth__zero" style={`left: ${x(0)}%`} aria-hidden="true" />
-                    <span class="growth__whole" style={`left: ${x(1)}%`} aria-hidden="true" />
                     {FACTORS.map((factor) => {
-                      const bar = barOf(row, factor.column);
+                      const bar = barOf(row, factor.field);
                       return (
                         <span class="growth__line" data-factor={factor.key}>
                           <span
@@ -187,7 +190,7 @@ const coffeeNote =
                             aria-hidden="true"
                           />
                           <span class="growth__value small" style={`left: ${bar.label}%`}>
-                            {factor.name} <Num n={share(row, factor.column)} />
+                            {factor.name} <Num n={change(row, factor.field)} />
                           </span>
                         </span>
                       );
@@ -200,8 +203,8 @@ const coffeeNote =
               <p class="growth__note small">
                 A área colhida de café diminuiu{coffeeNote.everyPeriod ? " em todos os períodos" : ""}, de{" "}
                 <Num n={coffeeNote.from} /> hectares em <Num n={year(coffee, "start_anchor")} /> para{" "}
-                <Num n={coffeeNote.to} /> em <Num n={year(coffee, "end_anchor")} />; por isso a
-                produtividade respondeu por mais do que todo o crescimento.
+                <Num n={coffeeNote.to} /> em <Num n={year(coffee, "end_anchor")} />. A produção
+                cresceu porque a produtividade subiu mais do que a área caiu.
               </p>
             )}
           </div>
@@ -211,9 +214,10 @@ const coffeeNote =
 
     <figcaption class="growth__caption small">
       <p>
-        <a href="/metodo/#fontes">Fonte</a>: IBGE, Produção Agrícola Municipal; decomposição
-        logarítmica do projeto. Cada ponta de período é a média de três anos. O café começa
-        depois da mudança de unidade de <Num n={breakYear} />.
+        <a href="/metodo/#fontes">Fonte</a>: IBGE, Produção Agrícola Municipal. Cada ponta de
+        período é a média de três anos. O café começa depois da mudança de unidade de{" "}
+        <Num n={breakYear} />. A parte de cada fator no crescimento (decomposição logarítmica)
+        está na tabela.
       </p>
       <ul class="figure__links" aria-label="Links da figura">
         <li><a href={`${dataBasePath}/analysis.json`} type="application/json">Dados</a></li>
@@ -227,7 +231,8 @@ const coffeeNote =
       <div class="table-scroll" tabindex="0" role="region" aria-label="Dados da figura em tabela">
         <table data-src-table={TABLE} data-src-cols={COLUMNS}>
           <caption class="small">
-            <Structural kind="table" n={1} /> · Origem do crescimento da produção, Brasil
+            <Structural kind="table" n={1} /> · Produção e área nas pontas de cada período e a parte de
+            cada fator no crescimento, Brasil
           </caption>
           <thead>
             <tr>
@@ -244,7 +249,7 @@ const coffeeNote =
           <tbody>
             {
               groups.flatMap((group) =>
-                group.rows.map((row) => (
+                [group.whole!, ...group.parts].map((row) => (
                   <tr data-row={row}>
                     <th scope="row">{group.name}</th>
                     <td class="num">
