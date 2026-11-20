@@ -6,6 +6,8 @@ describe("format", () => {
     expect(format(0.7273, "pct")).toBe("73%");
     expect(format(0.4302, "pct")).toBe("43%");
     expect(format(1, "pct")).toBe("100%");
+    // Thousands are grouped, as in every other number of the site.
+    expect(format(14.9277, "spct")).toBe("+1.493%");
   });
 
   it("signs percentages with the minus sign and a plus", () => {

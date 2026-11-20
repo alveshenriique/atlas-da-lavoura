@@ -20,8 +20,9 @@ const title = (page: Page) => page.getByRole("heading", { level: 1 });
 // spacing around each value differs from the visible text, the words do not.
 const sentence = (series: string, measure: string, year: string) =>
   new RegExp(`^Onde se produz ${series}\\s*, ${measure}\\s*, em\\s+${year}$`);
+// The controls under the title: labelled native selects (the title only reads the view).
 const filter = (page: Page, name: "Cultura" | "Medida" | "Ano") =>
-  title(page).getByRole("combobox", { name });
+  page.getByRole("group", { name: "O que o mapa mostra" }).getByRole("combobox", { name });
 
 async function counts(page: Page) {
   const raw = await map(page).getAttribute("data-counts");
@@ -152,11 +153,66 @@ test.describe("the Explorar map", () => {
     expect(drawn).toBeCloseTo(CIRCLE_MAX_RADIUS * Math.sqrt(value / scale.max) * pxPerUnit, 1);
   });
 
+  // The filters left the title (they read as text, not as choices): the title only reads the
+  // view, and a bar of labelled native selects under it chooses it, from the keyboard too.
+  test("the title reads the view; labelled controls under it choose it", async ({ page }) => {
+    await page.goto("/explorar/");
+    await ready(page);
+    await expect(title(page).locator("select, button, a, input")).toHaveCount(0);
+    const controls = page.getByRole("group", { name: "O que o mapa mostra" });
+    for (const name of ["Cultura", "Medida", "Ano", "Foco"]) {
+      const select = controls.getByRole("combobox", { name });
+      await expect(select).toBeVisible();
+      // Named by a label one can see, above the select.
+      const label = select.locator("xpath=ancestor::label[1]").locator(".explore__control-label");
+      await expect(label).toHaveText(name);
+      await expect(label).toBeVisible();
+    }
+    const year = controls.getByRole("combobox", { name: "Ano" });
+    await year.focus();
+    await page.keyboard.press("ArrowUp");
+    await expect(title(page)).toHaveAccessibleName(sentence("soja", "em toneladas", "2024"));
+    await expect(page).toHaveURL(/ano=2024/);
+  });
+
+  // Position with a product purpose: the map is what the page is for, so on a computer it
+  // fills its column, starts on the first screen and shows at least three quarters of its
+  // height without scrolling, with the panel's number beside the title's question; on a
+  // phone the order is title, number, controls, tabs and map.
+  test("the map fills its column and is mostly on the first screen, the panel beside the title", async ({
+    page,
+  }) => {
+    const box = (selector: string) => page.locator(selector).first().boundingBox();
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/explorar/");
+    await ready(page);
+    const mapBox = await box(".explore__map");
+    const columnBox = await box(".explore__map-column");
+    expect(mapBox?.width ?? 0).toBeGreaterThanOrEqual((columnBox?.width ?? 1) - 1);
+    const top = mapBox?.y ?? -1;
+    const height = mapBox?.height ?? 1;
+    expect(top).toBeGreaterThanOrEqual(0);
+    expect(top).toBeLessThan(900);
+    expect((Math.min(top + height, 900) - top) / height).toBeGreaterThanOrEqual(0.75);
+    const titleBox = await box(".explore__title");
+    const numberBox = await box(".explore-panel__number");
+    expect(numberBox?.x ?? 0).toBeGreaterThan((titleBox?.x ?? 0) + (titleBox?.width ?? 0));
+    expect(numberBox?.y ?? 0).toBeGreaterThanOrEqual(titleBox?.y ?? 0);
+    expect(numberBox?.y ?? 1000).toBeLessThan((titleBox?.y ?? 0) + (titleBox?.height ?? 0));
+    await page.setViewportSize({ width: 390, height: 844 });
+    const order = await Promise.all(
+      [".explore__title", ".explore-panel__number", ".explore__controls", ".explore__tabs", ".explore__map"].map(
+        async (selector) => (await box(selector))?.y ?? -1,
+      ),
+    );
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+
   test("changes series, measure and year, and the URL follows", async ({ page }) => {
     await page.goto("/explorar/");
     await ready(page);
-    await filter(page, "Cultura").selectOption({ label: "milho" });
-    await filter(page, "Medida").selectOption({ label: "em hectares colhidos" });
+    await filter(page, "Cultura").selectOption({ label: "Milho" });
+    await filter(page, "Medida").selectOption({ label: "Área colhida" });
     await filter(page, "Ano").selectOption("2000");
     await ready(page);
     await expect(map(page)).toHaveAttribute("data-view", "corn/harvested_area_ha/2000/BR");
@@ -168,7 +224,7 @@ test.describe("the Explorar map", () => {
   test("coffee never crosses the 2002 unit break", async ({ page }) => {
     await page.goto("/explorar/?serie=cafe-beneficiado&ano=2025");
     await ready(page);
-    await filter(page, "Cultura").selectOption({ label: "café em coco" });
+    await filter(page, "Cultura").selectOption({ label: "Café em coco" });
     await expect(map(page)).toHaveAttribute("data-view", "coffee_in_husk/production_t/2001/BR");
     const years = await filter(page, "Ano").locator("option").allTextContents();
     expect(years[0]).toBe("1974");
@@ -211,13 +267,13 @@ test.describe("the Explorar map", () => {
   test("moves to 1995 when the value is chosen from an earlier year", async ({ page }) => {
     await page.goto("/explorar/?serie=milho&ano=1980");
     await ready(page);
-    await filter(page, "Medida").selectOption({ label: "em valor da produção" });
+    await filter(page, "Medida").selectOption({ label: "Valor da produção" });
     await expect(map(page)).toHaveAttribute("data-view", "corn/production_value_real_thousand_brl/1995/BR");
     await expect(page.locator(".explore__notice")).toHaveText(
       "O valor da produção começa em 1995: o mapa passou de 1980 para 1995.",
     );
     // Back to the production: the year stays, the line goes.
-    await filter(page, "Medida").selectOption({ label: "em toneladas" });
+    await filter(page, "Medida").selectOption({ label: "Produção" });
     await expect(map(page)).toHaveAttribute("data-view", "corn/production_t/1995/BR");
     await expect(page.locator(".explore__notice")).toHaveText("");
   });
@@ -286,8 +342,8 @@ test.describe("the Explorar map", () => {
     // Municipality by municipality, in the table of a state: Mato Grosso, value, 1995.
     await page.goto("/explorar/?serie=soja&medida=valor&ano=1995&uf=MT");
     await ready(page);
-    await page.getByRole("button", { name: "Ver como tabela" }).click();
-    const rows = page.locator("#explorar-tabela tbody tr");
+    await page.getByRole("tab", { name: "Tabela" }).click();
+    const rows = page.locator("#painel-table tbody tr");
     await expect(rows).toHaveCount(142);
     const read = await rows.evaluateAll((trs) =>
       trs.map((tr) => ({
@@ -367,8 +423,8 @@ test.describe("the Explorar map", () => {
     // In the table the exact yield stays, with the flag (Parintins harvested 1 ha in 2025).
     await page.getByRole("combobox", { name: "Foco" }).selectOption({ label: "Amazonas" });
     await ready(page);
-    await page.getByRole("button", { name: "Ver como tabela" }).click();
-    const row = page.locator("#explorar-tabela tbody tr", { has: page.getByRole("link", { name: "Parintins" }) });
+    await page.getByRole("tab", { name: "Tabela" }).click();
+    const row = page.locator("#painel-table tbody tr", { has: page.getByRole("link", { name: "Parintins" }) });
     await expect(row).toContainText("área colhida pequena");
     await expect(row.locator(".num [data-src]")).toHaveText(/^\d/);
     expect(await findUnsourcedNumbers(page, request)).toEqual([]);
@@ -499,20 +555,28 @@ test.describe("the Explorar map", () => {
     await expect(page).toHaveURL(new RegExp(`/municipio/${id}/$`));
   });
 
-  test("the table has the same data, sorts and works from the keyboard", async ({
+  // The table opens in the map's place (a table far below looked like nothing happened), in
+  // tabs that work from the keyboard, with the chosen one marked.
+  test("the Tabela tab shows the same data in the map's place, sorted, from the keyboard", async ({
     page,
     request,
   }) => {
     await page.goto("/explorar/?serie=soja&medida=producao&ano=2025&uf=MT");
     await ready(page);
-    const toggle = page.getByRole("button", { name: "Ver como tabela" });
-    await toggle.focus();
-    await page.keyboard.press("Enter");
-    await expect(page.getByRole("button", { name: "Ocultar a tabela" })).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
-    const table = page.locator("#explorar-tabela table");
+    const mapTab = page.getByRole("tab", { name: "Mapa" });
+    const tableTab = page.getByRole("tab", { name: "Tabela" });
+    await expect(mapTab).toHaveAttribute("aria-selected", "true");
+    const mapTop = (await map(page).boundingBox())?.y ?? 0;
+    await mapTab.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(tableTab).toBeFocused();
+    await expect(tableTab).toHaveAttribute("aria-selected", "true");
+    await expect(mapTab).toHaveAttribute("aria-selected", "false");
+    await expect(page.getByRole("tabpanel", { name: "Tabela" })).toBeVisible();
+    await expect(map(page)).toBeHidden();
+    const panelTop = (await page.getByRole("tabpanel", { name: "Tabela" }).boundingBox())?.y ?? -1;
+    expect(Math.abs(panelTop - mapTop)).toBeLessThan(2);
+    const table = page.locator("#painel-table table");
     const rows = table.locator("tbody tr");
     await expect(rows).toHaveCount(142);
     await expect(rows.first().getByRole("link")).toHaveText("Sorriso");
@@ -533,6 +597,12 @@ test.describe("the Explorar map", () => {
     await region.focus();
     await expect(region).toBeFocused();
     expect(await findUnsourcedNumbers(page, request)).toEqual([]);
+    // Back to the map, from the keyboard.
+    await tableTab.focus();
+    await page.keyboard.press("ArrowLeft");
+    await expect(mapTab).toHaveAttribute("aria-selected", "true");
+    await expect(map(page)).toBeVisible();
+    await expect(page.locator("#painel-table")).toBeHidden();
   });
 
   test("a number in the legend that disagrees with its file fails the check", async ({
@@ -612,7 +682,10 @@ test.describe("the first paint", () => {
   });
 
   test("the outline lands where the municipalities are drawn", async ({ page }) => {
-    // The choropleth: circles may reach beyond the coast.
+    // The choropleth: circles may reach beyond the coast. On a computer's screen: the map's
+    // width follows the screen's height, and on a low one the ocean islands of the outline
+    // draw under a pixel on the canvas, below the opacity the bounds count.
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/explorar/?medida=rendimento");
     await ready(page);
     const boxes = await page.evaluate(() => {
@@ -679,8 +752,8 @@ test.describe("Explorar accessibility", () => {
     // The table in a state's focus: axe on the 5,571 national rows takes minutes.
     await page.getByRole("combobox", { name: "Foco" }).selectOption({ label: "Mato Grosso" });
     await ready(page);
-    await page.getByRole("button", { name: "Ver como tabela" }).click();
-    await expect(page.locator("#explorar-tabela tbody tr")).toHaveCount(142);
+    await page.getByRole("tab", { name: "Tabela" }).click();
+    await expect(page.locator("#painel-table tbody tr")).toHaveCount(142);
     expect((await new AxeBuilder({ page }).withTags(WCAG).analyze()).violations).toEqual([]);
   });
 });

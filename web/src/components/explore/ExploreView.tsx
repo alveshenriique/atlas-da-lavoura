@@ -1,5 +1,7 @@
-// The Explorar island: the title sentence with its filters, the map (canvas 2D, highlight
-// layer, accessible tooltip), the legend, the timeline and the table view. Totals
+// The Explorar island: the title (it reads the view), one bar with the tabs of the figure
+// and the labelled controls that choose the view, the figure (the map: canvas 2D, highlight
+// layer, accessible tooltip; or the same data as a table, in the map's place), the legend,
+// the timeline, and the side panel beside them. Totals
 // (production, areas, value) are proportional circles over a neutral base map; the yield,
 // a ratio, is a choropleth with fixed classes. The view lives in the URL. Every number
 // cites its file in the data package (lib/provenance.ts), including the legend's circle
@@ -100,6 +102,7 @@ const MEASURE_LABEL: Record<Measure, (s: SeriesOption) => string> = {
 };
 
 const fileOf = (series: string, measure: string) => `explore/${series}/${measure}.json`;
+const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 function readPalette(): Palette {
   const style = getComputedStyle(document.documentElement);
@@ -130,24 +133,6 @@ interface Reading {
   src?: string;
 }
 
-/** Sizes a select to its chosen option where CSS field-sizing is not supported. */
-function useFitSelect(ref: React.RefObject<HTMLSelectElement | null>, text: string) {
-  useEffect(() => {
-    const select = ref.current;
-    if (!select || CSS.supports("field-sizing", "content")) return;
-    const context = document.createElement("canvas").getContext("2d");
-    if (!context) return;
-    const fit = () => {
-      const style = getComputedStyle(select);
-      context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-      const padding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
-      select.style.width = `${Math.ceil(context.measureText(text).width + padding) + 2}px`;
-    };
-    fit();
-    void document.fonts.ready.then(fit);
-  }, [ref, text]);
-}
-
 export default function ExploreView(props: Props) {
   const { dataBase, series, ufs, scales, defaults } = props;
   const [view, setView] = useState<View>(defaults);
@@ -161,7 +146,9 @@ export default function ExploreView(props: Props) {
   const [files, setFiles] = useState<Record<string, ExploreFile>>({});
   const [names, setNames] = useState<Municipalities["municipalities"] | null>(null);
   const [playing, setPlaying] = useState(false);
-  const [tableOpen, setTableOpen] = useState(false);
+  // The figure shows the map or the same data as a table, in the same place (tabs).
+  const [tab, setTab] = useState<"map" | "table">("map");
+  const tableOpen = tab === "table";
   const [hover, setHover] = useState<{ index: number; x: number; y: number } | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
   const [size, setSize] = useState<{ width: number; height: number } | null>(null);
@@ -169,9 +156,6 @@ export default function ExploreView(props: Props) {
   const [sort, setSort] = useState<{ key: "name" | "value"; descending: boolean }>({ key: "value", descending: true });
   const [href, setHref] = useState("");
   const reduceMotion = usePrefersReducedMotion();
-  const seriesSelect = useRef<HTMLSelectElement>(null);
-  const measureSelect = useRef<HTMLSelectElement>(null);
-  const yearSelect = useRef<HTMLSelectElement>(null);
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -800,59 +784,34 @@ export default function ExploreView(props: Props) {
   };
   const measureLabel = MEASURE_LABEL[view.measure](option);
   const circleRefs = scale?.kind === "circles" ? scale.refs : [];
-  useFitSelect(seriesSelect, option.phrase);
-  useFitSelect(measureSelect, MEASURE_PHRASE[view.measure](option));
-  useFitSelect(yearSelect, format(view.year, "year"));
+  const tabs = [
+    { id: "map", label: "Mapa" },
+    { id: "table", label: "Tabela" },
+  ] as const;
+  // Tabs as in the WAI-ARIA pattern: arrows (and Home, End) move between them and select.
+  const onTabKey = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    const index = tabs.findIndex((t) => t.id === tab);
+    const next =
+      event.key === "ArrowRight" ? index + 1 : event.key === "ArrowLeft" ? index - 1 : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : null;
+    if (next === null) return;
+    event.preventDefault();
+    const target = tabs[(next + tabs.length) % tabs.length];
+    if (!target) return;
+    setTab(target.id);
+    document.getElementById(`aba-${target.id}`)?.focus();
+  };
   const focusName = view.uf ? (ufs.find((u) => u.abbr === view.uf)?.name ?? view.uf) : "Brasil";
 
   return (
     <div className="explore">
       <div className="explore__head">
-        {/* Totals ask where; the yield asks how much the crop gives. Same filters in both. */}
+        {/* The title reads the view chosen in the bar over the figure. Totals ask where; the
+            yield asks how much the crop gives. */}
         <h1 className="explore__title">
-          {isYield ? "Quanto rende" : "Onde se produz"}{" "}
-          <span className="explore__term">
-            {isYield ? `${option.article}\u00a0` : null}
-            <span className="explore__select">
-              <select ref={seriesSelect} aria-label="Cultura" value={view.series} onChange={(e) => setSeries(e.target.value)}>
-                {series.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.phrase}
-                  </option>
-                ))}
-              </select>
-            </span>
-            ,
-          </span>{" "}
-          <span className="explore__term">
-            <span className="explore__select">
-              <select
-                ref={measureSelect}
-                aria-label="Medida"
-                value={view.measure}
-                onChange={(e) => setMeasure(e.target.value as Measure)}
-              >
-                {(Object.keys(MEASURE_PHRASE) as Measure[]).map((m) => (
-                  <option key={m} value={m}>
-                    {MEASURE_PHRASE[m](option)}
-                  </option>
-                ))}
-              </select>
-            </span>
-            ,
-          </span>{" "}
-          <span className="explore__term">
-            em{"\u00a0"}
-            <span className="explore__select">
-              <select ref={yearSelect} aria-label="Ano" value={view.year} onChange={(e) => setYear(Number(e.target.value))}>
-                {years.map((year) => (
-                  <option key={year} value={year} data-src={yearSrc(year)}>
-                    {format(year, "year")}
-                  </option>
-                ))}
-              </select>
-            </span>
-          </span>
+          {isYield
+            ? `Quanto rende ${option.article}\u00a0${option.phrase}, em quilos por hectare, em\u00a0`
+            : `Onde se produz ${option.phrase}, ${MEASURE_PHRASE[view.measure](option)}, em\u00a0`}
+          {yearNum(view.year)}
         </h1>
         {/* Said once when a link or a choice of measure moved the year (the measure starts
             later than the series); empty otherwise, but in the page, so it is announced. */}
@@ -873,35 +832,93 @@ export default function ExploreView(props: Props) {
         </p>
       </div>
 
-      <div className="explore__body">
-        <section id="figura-1" className="explore__map-column" aria-label="Mapa dos municípios">
+      <ExplorePanel
+        dataBase={dataBase}
+        view={view}
+        ufs={ufs}
+        files={files}
+        measureLabel={measureLabel}
+        seriesPhrase={option.phrase}
+        unit={unit}
+        firstYear={option.firstYear}
+        fromYear={range.first}
+        defaultRanking={props.defaultRanking}
+        onFocus={(uf) => setView((v) => ({ ...v, uf }))}
+        onYear={setYear}
+      />
+      <section id="figura-1" className="explore__map-column" aria-label="Mapa dos municípios">
+          {/* One bar over the figure: the tabs on the left, the choices of the view on the right
+              (on a phone, the choices first, two per row). */}
           <div className="explore__toolbar">
-            {/* The target of /explorar/#foco, the home page's "Ver o seu estado no mapa". */}
-            <label className="explore__focus" id="foco">
-              <span className="meta">Foco</span>
-              <select
-                value={view.uf ?? ""}
-                onChange={(e) => setView((v) => ({ ...v, uf: e.target.value || null }))}
-              >
-                <option value="">Brasil</option>
-                {ufs.map((u) => (
-                  <option key={u.abbr} value={u.abbr}>
-                    {u.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button
-              type="button"
-              className="explore__table-toggle"
-              aria-expanded={tableOpen}
-              aria-controls="explorar-tabela"
-              onClick={() => setTableOpen((open) => !open)}
-            >
-              {tableOpen ? "Ocultar a tabela" : "Ver como tabela"}
-            </button>
+            <div className="explore__tabs" role="tablist" aria-label="Formato da figura">
+              {tabs.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="tab"
+                  id={`aba-${t.id}`}
+                  className="explore__tab"
+                  aria-selected={tab === t.id}
+                  aria-controls={`painel-${t.id}`}
+                  tabIndex={tab === t.id ? 0 : -1}
+                  onClick={() => setTab(t.id)}
+                  onKeyDown={onTabKey}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            <div className="explore__controls" role="group" aria-label="O que o mapa mostra">
+              <label className="explore__control">
+                <span className="explore__control-label small">Cultura</span>
+                  <select value={view.series} onChange={(e) => setSeries(e.target.value)}>
+                    {series.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {capitalise(s.phrase)}
+                      </option>
+                    ))}
+                  </select>
+              </label>
+              <label className="explore__control">
+                <span className="explore__control-label small">Medida</span>
+                  <select value={view.measure} onChange={(e) => setMeasure(e.target.value as Measure)}>
+                    {(Object.keys(MEASURE_LABEL) as Measure[]).map((m) => (
+                      <option key={m} value={m}>
+                        {MEASURE_LABEL[m](option)}
+                      </option>
+                    ))}
+                  </select>
+              </label>
+              <label className="explore__control">
+                <span className="explore__control-label small">Ano</span>
+                  <select value={view.year} onChange={(e) => setYear(Number(e.target.value))}>
+                    {years.map((year) => (
+                      <option key={year} value={year} data-src={yearSrc(year)}>
+                        {format(year, "year")}
+                      </option>
+                    ))}
+                  </select>
+              </label>
+              {/* The target of /explorar/#foco, the home page's "Ver o seu estado no mapa". */}
+              <label className="explore__control" id="foco">
+                <span className="explore__control-label small">Foco</span>
+                  <select value={view.uf ?? ""} onChange={(e) => setView((v) => ({ ...v, uf: e.target.value || null }))}>
+                    <option value="">Brasil</option>
+                    {ufs.map((u) => (
+                      <option key={u.abbr} value={u.abbr}>
+                        {u.name}
+                      </option>
+                    ))}
+                  </select>
+              </label>
+            </div>
           </div>
 
+          {/* The figure is as wide as the map, which is as wide as the screen's height allows on
+              a computer (the whole map on the first screen); the legend's circles are sized in
+              its units. */}
+          <div className="explore__figure" style={{ ["--aspect" as string]: props.aspect }}>
+          <div id="painel-map" role="tabpanel" aria-labelledby="aba-map" hidden={tab !== "map"}>
           <div
             ref={wrapRef}
             className="explore__map"
@@ -990,6 +1007,66 @@ export default function ExploreView(props: Props) {
               ) : null}
             </p>
           </div>
+          </div>
+          {/* The table: the same data as the map, in the map's place (the tabs above). */}
+          <div
+            id="painel-table"
+            role="tabpanel"
+            aria-labelledby="aba-table"
+            className="explore__table"
+            style={{ aspectRatio: `1 / ${props.aspect}` }}
+            hidden={tab !== "table"}
+          >
+            {tableOpen && (
+              <>
+              <h2 id="explorar-tabela-titulo" className="explore__table-title">
+                {measureLabel} por município, {focusName}, {yearNum(view.year)}
+              </h2>
+              {!names ? (
+                <p className="small">Carregando a tabela…</p>
+              ) : (
+                <div className="table-scroll explore__table-scroll" tabIndex={0} role="region" aria-label="Tabela dos municípios">
+                  <table
+                    data-src-table="municipalities.json#/municipalities"
+                    data-src-cols="municipality_name|text,state_abbreviation|text"
+                  >
+                    <thead>
+                      <tr>
+                        <th scope="col" aria-sort={sort.key === "name" ? (sort.descending ? "descending" : "ascending") : "none"}>
+                          <button type="button" onClick={() => setSort((s) => ({ key: "name", descending: s.key === "name" ? !s.descending : false }))}>
+                            Município
+                          </button>
+                        </th>
+                        <th scope="col">UF</th>
+                        <th scope="col" aria-sort={sort.key === "value" ? (sort.descending ? "descending" : "ascending") : "none"}>
+                          <button type="button" onClick={() => setSort((s) => ({ key: "value", descending: s.key === "value" ? !s.descending : true }))}>
+                            {measureLabel} ({unit})
+                          </button>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tableRows.map((entry) => (
+                        <tr key={entry.row} data-row={entry.row}>
+                          <th scope="row">
+                            <a href={`/municipio/${names.municipality_id[entry.row]}/`}>{entry.name}</a>
+                          </th>
+                          <td>{names.state_abbreviation[entry.row]}</td>
+                          <td className="num">
+                            {readingText(entry.reading, false)}
+                            {entry.reading.kind === "small" ? (
+                              <span className="explore__flag explore__flag--table">área colhida pequena</span>
+                            ) : null}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              </>
+            )}
+          </div>
           <p className="visually-hidden" aria-live="polite">
             {selected !== null && activeReading && activeName ? (
               <>
@@ -1022,7 +1099,7 @@ export default function ExploreView(props: Props) {
                 : antes disso, {late.why}.
               </p>
             ) : null}
-            {mode === "circles" ? (
+            {tab === "table" ? null : mode === "circles" ? (
               <ul className="legend legend--circles small" aria-label="Legenda do mapa">
                 {circleRefs.map((value, k) => (
                     <li key={value}>
@@ -1082,7 +1159,7 @@ export default function ExploreView(props: Props) {
                 </li>
               </ul>
             )}
-            <p className="explore__legend-note small">
+            <p className="explore__legend-note small" hidden={tab === "table"}>
               {mode === "circles"
                 ? "A área de cada círculo é proporcional ao valor, na mesma escala em todos os anos: os tamanhos podem ser comparados de um ano para outro."
                 : "As classes são as mesmas em todos os anos: as cores podem ser comparadas de um ano para outro."}
@@ -1139,72 +1216,8 @@ export default function ExploreView(props: Props) {
             </ul>
           </div>
 
-          {tableOpen && (
-            <section id="explorar-tabela" className="explore__table" aria-labelledby="explorar-tabela-titulo">
-              <h2 id="explorar-tabela-titulo" className="explore__table-title">
-                {measureLabel} por município, {focusName}, {yearNum(view.year)}
-              </h2>
-              {!names ? (
-                <p className="small">Carregando a tabela…</p>
-              ) : (
-                <div className="table-scroll explore__table-scroll" tabIndex={0} role="region" aria-label="Tabela dos municípios">
-                  <table
-                    data-src-table="municipalities.json#/municipalities"
-                    data-src-cols="municipality_name|text,state_abbreviation|text"
-                  >
-                    <thead>
-                      <tr>
-                        <th scope="col" aria-sort={sort.key === "name" ? (sort.descending ? "descending" : "ascending") : "none"}>
-                          <button type="button" onClick={() => setSort((s) => ({ key: "name", descending: s.key === "name" ? !s.descending : false }))}>
-                            Município
-                          </button>
-                        </th>
-                        <th scope="col">UF</th>
-                        <th scope="col" aria-sort={sort.key === "value" ? (sort.descending ? "descending" : "ascending") : "none"}>
-                          <button type="button" onClick={() => setSort((s) => ({ key: "value", descending: s.key === "value" ? !s.descending : true }))}>
-                            {measureLabel} ({unit})
-                          </button>
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tableRows.map((entry) => (
-                        <tr key={entry.row} data-row={entry.row}>
-                          <th scope="row">
-                            <a href={`/municipio/${names.municipality_id[entry.row]}/`}>{entry.name}</a>
-                          </th>
-                          <td>{names.state_abbreviation[entry.row]}</td>
-                          <td className="num">
-                            {readingText(entry.reading, false)}
-                            {entry.reading.kind === "small" ? (
-                              <span className="explore__flag explore__flag--table">área colhida pequena</span>
-                            ) : null}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </section>
-          )}
-        </section>
-
-        <ExplorePanel
-          dataBase={dataBase}
-          view={view}
-          ufs={ufs}
-          files={files}
-          measureLabel={measureLabel}
-          seriesPhrase={option.phrase}
-          unit={unit}
-          firstYear={option.firstYear}
-          fromYear={range.first}
-          defaultRanking={props.defaultRanking}
-          onFocus={(uf) => setView((v) => ({ ...v, uf }))}
-          onYear={setYear}
-        />
-      </div>
+          </div>
+      </section>
     </div>
   );
 }

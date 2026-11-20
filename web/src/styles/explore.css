@@ -1,26 +1,80 @@
 /* Explorar, after the approved editorial draft with the combined direction's adjustments:
-   the title sentence carries the filters (words of the sentence with a list marker, in the
-   identity's colours; brown is only for drought), the map takes eight columns and the side
-   panel the other four (part B), the timeline and the source line sit under the map, and the
-   decomposition comes below. */
+   the title reads the view; the side panel rises beside it, its number at the height of the
+   title's question; one bar over the figure holds the tabs (map or table) and the light
+   controls that choose the view (brown is only for drought); the map takes the first eight
+   columns at most, and the whole map fits the first screen of a computer; the timeline and
+   the source line sit under it, and the decomposition comes below. On a phone the order is:
+   title, the panel's number, the controls, the tabs, the map, then the rest of the panel. */
 
-.explore__head {
-  display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  column-gap: var(--gutter);
-  align-items: end;
-  padding-block: clamp(1.5rem, 3vw, 2.5rem) 1.25rem;
-  border-bottom: 1px solid var(--color-grid);
+/* --- Layout. On a phone (and up to 64rem) one column, in the order above: the panel is
+   split into its number and its body (display: contents), each placed with `order`. --- */
+.explore {
+  display: flex;
+  flex-direction: column;
 }
 
-.explore__head > * {
-  grid-column: 1 / -1;
+.explore__head {
+  order: 1;
+  padding-block: clamp(1.5rem, 3vw, 2.5rem) 1.25rem;
+}
+
+.explore__panel {
+  display: contents;
+}
+
+.explore-panel__head {
+  order: 2;
+  margin-bottom: 1.5rem;
+}
+
+.explore__map-column {
+  order: 3;
   min-width: 0;
 }
 
-/* The title is a sentence with its filters, longer than a headline: on narrow screens it
-   scales with the width (each filter and its comma never break), up to the identity's
-   headline size. */
+.explore-panel__body {
+  order: 4;
+  margin-top: 2rem;
+}
+
+@media (min-width: 64rem) {
+  .explore {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    grid-template-rows: auto 1fr;
+    column-gap: var(--gutter);
+  }
+
+  .explore__head {
+    grid-column: 1 / span 8;
+    grid-row: 1;
+  }
+
+  /* The panel from the top of the content, beside the title. */
+  .explore__panel {
+    display: block;
+    grid-column: 9 / span 4;
+    grid-row: 1 / span 2;
+    align-self: start;
+    margin-top: clamp(1.5rem, 3vw, 2.5rem);
+  }
+
+  .explore-panel__head {
+    margin-bottom: 0;
+  }
+
+  .explore-panel__body {
+    margin-top: 0;
+  }
+
+  .explore__map-column {
+    grid-column: 1 / span 8;
+    grid-row: 2;
+  }
+}
+
+/* The title reads the view chosen in the controls, longer than a headline: on narrow
+   screens it scales with the width, up to the identity's headline size. */
 .explore__title {
   margin: 0;
   font-size: min(var(--size-headline), 7.2vw);
@@ -37,155 +91,133 @@
   margin: 0;
 }
 
-/* With the filters clear by themselves there is no instruction beside the title, which
-   takes ten columns: the longest sentence keeps to two lines. */
-@media (min-width: 64rem) {
-  .explore__title {
-    grid-column: 1 / span 10;
-  }
+/* --- The bar over the figure: the tabs on the left, the controls on the right, on one line
+   that wraps where the screen is narrow; on a phone the controls come first, two per row. */
+.explore__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid var(--color-grid);
+}
 
-  .explore__notice {
-    grid-column: 1 / span 8;
+/* The controls (a pattern the municipality page reuses): native selects, light, a small
+   label over the value in larger text, a chevron and a thin rule under it, no box. */
+.explore__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+  padding-bottom: 0.5rem;
+}
+
+@media (max-width: 47.99rem) {
+  .explore__controls {
+    order: -1;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
   }
 }
 
-/* The filters read as words of the sentence, in the same font, and look like what they
-   are: each carries a list marker (a small chevron in the secondary text colour), takes the
-   band's background under the pointer and a visible outline with the keyboard. No underline
-   (that reads as a link) and no colour outside the identity. Where field-sizing is missing,
-   the island sizes each one to its chosen option. */
-/* A filter and the punctuation after it never part across lines. */
-.explore__term {
-  white-space: nowrap;
-}
-
-.explore__select {
+.explore__control {
   position: relative;
-  display: inline-block;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  /* A link to /explorar/#foco lands here, with room above. */
+  scroll-margin-top: 1rem;
 }
 
-/* The chevron, drawn with two borders (no image: the CSP allows none from data: URIs). Its
-   tip touches the end of the box, so the punctuation after a filter sits right next to it. */
-.explore__select::after {
+.explore__control-label {
+  color: var(--color-text-secondary);
+}
+
+/* The chevron at the right of the select (the last thing in the label), drawn with two
+   borders (no image: the CSP allows none from data: URIs). */
+.explore__control::after {
   content: "";
   position: absolute;
-  right: 0.04em;
-  top: 50%;
-  width: 0.19em;
-  height: 0.19em;
-  border-right: 0.06em solid var(--color-text-secondary);
-  border-bottom: 0.06em solid var(--color-text-secondary);
-  transform: translateY(-70%) rotate(45deg);
+  right: 0.3rem;
+  bottom: 1rem;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-right: 1.5px solid var(--color-text-secondary);
+  border-bottom: 1.5px solid var(--color-text-secondary);
+  transform: rotate(45deg);
   pointer-events: none;
 }
 
-.explore__title select {
+.explore__control select {
   appearance: none;
   font: inherit;
-  letter-spacing: inherit;
-  color: inherit;
-  background: transparent;
+  font-size: var(--size-deck);
+  color: var(--color-text);
+  background: none;
   border: 0;
-  border-radius: 0.12em;
-  /* Room for the chevron on the right; the hover background reaches a little to the left,
-     and the negative margin keeps the word where the sentence puts it. */
-  padding: 0 0.4em 0 0.12em;
-  margin: 0 0 0 -0.12em;
-  cursor: pointer;
+  border-bottom: 1px solid var(--color-text-muted);
+  border-radius: 0;
+  padding: 0.15rem 1.4rem 0.2rem 0;
+  width: 100%;
   field-sizing: content;
-  line-height: 1.1;
+  cursor: pointer;
 }
 
-.explore__title select:hover {
+/* Under the pointer, and when a link to /explorar/#foco lands on the choice of state. */
+.explore__control select:hover,
+.explore__control:target select {
   background: var(--color-band);
 }
 
-.explore__title select:focus-visible {
+.explore__control select:focus-visible {
   outline: 2px solid var(--color-text);
   outline-offset: 2px;
 }
 
-.explore__title option {
-  font-family: var(--font-sans);
+.explore__control option {
   font-size: 1rem;
-  color: var(--color-text);
   background: var(--color-background);
 }
 
-.explore__body {
-  display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  column-gap: var(--gutter);
-  row-gap: 2rem;
-  padding-top: 1.5rem;
-}
-
-.explore__body > * {
-  grid-column: 1 / -1;
-  min-width: 0;
-}
-
-/* The map column is a size container: the legend's circles are sized in its units, the
-   width of the map, so they match the circles on the map at any screen width. */
-.explore__map-column {
+/* --- The figure: the whole width of the map column (the map is what the page is for). It is
+   the size container of the legend's circles, so they match the map's. --- */
+.explore__figure {
   container-type: inline-size;
 }
 
-@media (min-width: 64rem) {
-  .explore__map-column {
-    grid-column: 1 / span 8;
-  }
-
-  .explore__panel {
-    grid-column: 9 / span 4;
-  }
-}
-
-.explore__toolbar {
+/* --- Tabs over the figure: the map or the same data as a table, in the same place. The
+   chosen tab is marked by a bar in the text colour under it, as in Our World in Data. --- */
+.explore__tabs {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem 1.5rem;
-  margin-bottom: 0.75rem;
+  gap: 0.25rem;
 }
 
-.explore__focus {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.6rem;
-}
-
-.explore__focus .meta {
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.explore__focus select,
-.explore__table-toggle {
+.explore__tab {
   font: inherit;
-  font-size: var(--size-meta);
-  color: var(--color-text);
-  background: var(--color-background);
-  border: 1px solid var(--color-text-muted);
-  border-radius: 0;
-  padding: 0.3rem 0.6rem;
+  color: var(--color-text-secondary);
+  background: none;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -1px;
+  padding: 0.45rem 0.9rem;
+  min-height: 2.5rem;
   cursor: pointer;
 }
 
-.explore__table-toggle[aria-expanded="true"] {
+.explore__tab:hover {
+  color: var(--color-text);
   background: var(--color-band);
 }
 
-/* A link to /explorar/#foco (the home page's "Ver o seu estado no mapa") lands on the choice
-   of state, marked with the band's background and a stronger border. */
-.explore__focus {
-  scroll-margin-top: 1rem;
+.explore__tab[aria-selected="true"] {
+  color: var(--color-text);
+  border-bottom-color: var(--color-text);
 }
 
-.explore__focus:target select {
-  background: var(--color-band);
-  border-color: var(--color-text);
+.explore__tab:focus-visible {
+  outline: 2px solid var(--color-text);
+  outline-offset: -2px;
 }
 
 /* --- The map: a canvas, a thin highlight layer and the tooltip, all over the same box. --- */
@@ -269,23 +301,6 @@
 .explore__tooltip-name {
   font-size: var(--size-body);
   color: var(--color-text);
-}
-
-.explore__status {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  margin: 0;
-  color: var(--color-text-secondary);
-}
-
-.explore__status--note {
-  inset: auto 0 0;
-  display: block;
-  text-align: center;
-  padding: 0.5rem;
-  background: color-mix(in srgb, var(--color-background) 85%, transparent);
 }
 
 /* --- First paint: the outline of the states, made at build time and in the HTML, stands in
@@ -557,9 +572,16 @@ html:not(.js) .explore__loading {
   list-style: none;
 }
 
-/* --- The table: the same data, sortable, in a scroll region of its own. --- */
+/* --- The table: the same data, sortable, in the map's place and size; its rows scroll in a
+   region of their own. --- */
 .explore__table {
-  margin-top: 2rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.explore__table[hidden] {
+  display: none;
 }
 
 .explore__table-title {
@@ -568,7 +590,8 @@ html:not(.js) .explore__loading {
 }
 
 .explore__table-scroll {
-  max-height: 32rem;
+  flex: 1;
+  min-height: 12rem;
   overflow: auto;
   border-block: 1px solid var(--color-grid);
 }
@@ -886,6 +909,12 @@ html:not(.js) .explore__loading {
   color: var(--color-text-secondary);
 }
 
+/* Production (the result) in the darkest step and thinner; its two factors in two lighter
+   steps, thicker. Every bar is also named by its label. */
+.growth__swatch--production {
+  background: var(--color-seq-6);
+}
+
 .growth__swatch--area {
   background: var(--color-seq-5);
 }
@@ -909,21 +938,6 @@ html:not(.js) .explore__loading {
   }
 }
 
-/* The ticks sit over the bars' column: zero and 100% (the whole growth). */
-.growth__axis {
-  position: relative;
-  height: 1.3rem;
-  margin-left: var(--label);
-  margin-right: var(--value-room);
-}
-
-.growth__tick {
-  position: absolute;
-  transform: translateX(-50%);
-  color: var(--color-text-muted);
-  font-size: var(--size-meta);
-}
-
 .growth__group + .growth__group {
   margin-top: 1rem;
 }
@@ -936,6 +950,12 @@ html:not(.js) .explore__loading {
   color: var(--color-text);
   text-transform: uppercase;
   letter-spacing: 0.06em;
+}
+
+/* The whole period of the crop, in words: its changes would flatten the bars. */
+.growth__summary {
+  margin: 0 0 0.5rem;
+  color: var(--color-text);
 }
 
 .growth__rows {
@@ -958,15 +978,11 @@ html:not(.js) .explore__loading {
 }
 
 .growth__period {
-  color: var(--color-text);
-}
-
-.growth__row--part .growth__period {
   color: var(--color-text-secondary);
 }
 
-/* The two bars of a period, area over yield, both from the same zero; the zero and the 100%
-   lines cross both. The labels may run into the room on the right. */
+/* The three bars of a period, from the same zero, which crosses them all. The labels may run
+   into the room on the right. */
 .growth__pair {
   position: relative;
   display: block;
@@ -985,9 +1001,10 @@ html:not(.js) .explore__loading {
   bottom: 0.3rem;
 }
 
-.growth__row--part .growth__bar {
-  top: 0.4rem;
-  bottom: 0.4rem;
+.growth__bar--production {
+  top: 0.45rem;
+  bottom: 0.45rem;
+  background: var(--color-seq-6);
 }
 
 .growth__bar--area {
@@ -998,8 +1015,8 @@ html:not(.js) .explore__loading {
   background: var(--color-seq-3);
 }
 
-/* The label has the page's background, so the 100% line does not cross its text; it starts
-   a little after the bar's end (or after zero), so the zero line stays whole. */
+/* The label starts a little after the bar's end (or after zero), so the zero line stays
+   whole, and has the page's background. */
 .growth__value {
   position: absolute;
   top: 0;
@@ -1011,19 +1028,14 @@ html:not(.js) .explore__loading {
   background: var(--color-background);
 }
 
-.growth__zero,
-.growth__whole {
+.growth__zero {
   position: absolute;
   top: -0.1rem;
   bottom: -0.1rem;
   border-left: 1px solid var(--color-text);
 }
 
-.growth__whole {
-  border-left: 1px dashed var(--color-text-muted);
-}
-
-/* Why coffee's shares pass 100% and below zero, under its bars and aligned with them. */
+/* Why coffee's production grew while its area shrank, under its bars and aligned with them. */
 .growth__note {
   margin: 0.35rem 0 0 var(--label);
   max-width: 40rem;

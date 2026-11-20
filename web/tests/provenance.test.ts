@@ -120,3 +120,12 @@ describe("the first year of a matrix", () => {
     expect(() => resolveRef(ref, { years: [1986], values: [[null], [null]] })).toThrow(/no value in any year/);
   });
 });
+
+describe("the change between the ends of a period", () => {
+  it("is the end over the start, minus one, at the same place", () => {
+    const doc = { block: { start_area_ha: [100, 50], end_area_ha: [80, 150] } };
+    expect(resolveRef(parseRef("analysis.json#/block/start_area_ha/0!change|spct"), doc)).toBeCloseTo(-0.2);
+    expect(renderRef(parseRef("analysis.json#/block/start_area_ha/1!change|spct"), doc)).toBe("+200%");
+    expect(() => resolveRef(parseRef("analysis.json#/block/end_area_ha/0!change|spct"), doc)).toThrow(/start_/);
+  });
+});

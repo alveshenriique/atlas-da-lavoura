@@ -754,7 +754,7 @@ link permanente baixa só os dados da sua visão. O mapa é um grupo focável: a
 percorrem os vizinhos, Enter abre a ficha, Esc fecha o tooltip (de qualquer ponto da
 página, WCAG 1.4.13), e cada município escolhido é anunciado numa região `aria-live`. No
 toque, o primeiro toque mostra o município e o segundo abre a ficha. "Ver como tabela"
-mostra os mesmos dados da visão, ordenáveis pelo nome ou pelo valor (`aria-sort`), numa
+(hoje a aba Tabela, ver "Explorar: segunda rodada") mostra os mesmos dados da visão, ordenáveis pelo nome ou pelo valor (`aria-sort`), numa
 região rolável que recebe foco, com cada nome levando à ficha. O espaço do painel lateral
 (série do Brasil e ranking das UFs) e da decomposição área × produtividade fica reservado
 para a parte B.
@@ -1040,9 +1040,9 @@ O `municipalities.json` (64 KB com gzip) é baixado só quando o ano mostrado é
 
 **Números da legenda no formato do painel.** A legenda do valor mostrava "5.000.000" sob "em mil R$ de 2025", e o painel, "R$ 5,4 bi". As referências dos círculos agora usam o formato do painel para números redondos (`short` e `shortbrl` em `lib/format.ts`: a unidade a partir de mil e sem a casa decimal zero, "R$ 5 bi", "R$ 200 mi", "100 mil", "2 mil"). O título da legenda do valor passou a "em reais de 2025". Os valores continuam vindo dos arquivos, pela operação `circle:k` da procedência, agora com esses formatos. O rendimento segue em números inteiros ("2.800"), porque abreviar não ajuda em quilos por hectare. O tooltip e a tabela também ficam com o número exato.
 
-**Filtros na frase do título.** O sublinhado lembrava um link e precisava da frase de instrução ao lado. Cada filtro ganhou um indicador de lista (uma pequena seta, desenhada com bordas, porque a CSP não aceita imagens em `data:`), o fundo da faixa sob o ponteiro e um contorno visível no foco do teclado, só com cores que a identidade já tem. A frase de instrução saiu, e o título passou a ocupar dez colunas, para a frase mais longa continuar em duas linhas. A ponta da seta toca o fim da caixa do filtro, para a vírgula depois dele ficar colada, como depois de uma palavra.
+**Filtros na frase do título.** O sublinhado lembrava um link e precisava da frase de instrução ao lado. Cada filtro ganhou um indicador de lista (uma pequena seta, desenhada com bordas, porque a CSP não aceita imagens em `data:`), o fundo da faixa sob o ponteiro e um contorno visível no foco do teclado, só com cores que a identidade já tem. A frase de instrução saiu, e o título passou a ocupar dez colunas, para a frase mais longa continuar em duas linhas. A ponta da seta toca o fim da caixa do filtro, para a vírgula depois dele ficar colada, como depois de uma palavra. (Substituído na segunda rodada do Explorar por uma barra de controles com rótulos.)
 
-**Decomposição com duas barras.** A barra empilhada com uma parte negativa era correta, mas parecia erro. Cada período agora tem duas barras, área e produtividade, saindo do mesmo zero, cada uma com o próprio sinal e o próprio rótulo, logo depois da ponta da barra (ou do zero, numa barra que vai para a esquerda). O teste confere que cada barra vai para o lado do zero que o sinal do dado indica e que o rótulo fica na linha da sua barra.
+**Decomposição com duas barras.** A barra empilhada com uma parte negativa era correta, mas parecia erro. Cada período agora tem duas barras, área e produtividade, saindo do mesmo zero, cada uma com o próprio sinal e o próprio rótulo, logo depois da ponta da barra (ou do zero, numa barra que vai para a esquerda). O teste confere que cada barra vai para o lado do zero que o sinal do dado indica e que o rótulo fica na linha da sua barra. (Substituído na segunda rodada do Explorar pelas variações em porcentagem.)
 
 **Número de destaque do painel.** A unidade "t de café beneficiado" aparecia grande e quebrava o número em duas linhas. Ao lado do número fica só a unidade curta ("t"), pequena e na cor secundária; o que ela mede vai para a linha de baixo ("Produção, em t de café beneficiado") e a série, para a linha de cima ("Brasil · café arábica · 2012").
 
@@ -1065,3 +1065,80 @@ Enquanto a ficha do município está em construção, a segunda ação leva ao E
 No computador, a faixa usa duas colunas da grade: a frase à esquerda (colunas 1 a 7, com a medida de leitura) e as três ações à direita (colunas 9 a 12), empilhadas. Na primeira versão, com as ações numa linha abaixo da frase, o lado direito ficava vazio, e a faixa era mais alta. Cada ação é uma linha própria, com seta, área clicável de pelo menos 2 rem, o fundo da página sob o ponteiro e contorno visível no foco do teclado, só com cores da identidade. A seta é desenhada com bordas, porque o caractere da seta não está nos subconjuntos das fontes. A faixa tem 126 px a 1.440 px de largura (147 na primeira versão), e o achado termina a 563 px de altura, dentro da primeira tela a 900 px e também a 768 px. No celular, tudo fica empilhado, com as ações uma por linha, mais fáceis de tocar, e o 73% fica perto do fim da primeira tela, o que foi aceito.
 
 Os testes cobrem o que é contrato e propósito de produto. Cada ação leva ao lugar que promete: o achado, o controle de UF do Explorar (ainda marcado depois que a ilha grava a visão na URL) e o mapa. A faixa fica acima do achado, e o achado continua na primeira tela a 1.440 e 1.280 px. Os números da frase entram no teste de procedência da página. A página inicial ganhou 426 bytes (132.906 no Lighthouse), e o Explorar, 72 (714.162 de 716.800).
+
+## Produto web: Explorar, segunda rodada (fase 12)
+
+Três mudanças pedidas depois de ver a página com leitores leigos. Todas seguem a [estratégia de testes](#estratégia-de-testes).
+
+**Barra de controles no lugar dos filtros no título.** A frase com os filtros embutidos não ficou clara, mesmo com as setas: os termos pareciam texto, e não escolhas. O título continua uma frase ("Onde se produz soja, em toneladas, em 2025"), mas só lê a visão escolhida. O ano dela cita o arquivo de dados. Uma barra de seletores nativos (`select`) com rótulos visíveis, Cultura, Medida, Ano e Foco, escolhe a visão (veja o layout logo abaixo). O nome de cada seletor vem do próprio rótulo, então o leitor de tela diz o mesmo que se vê, e o teclado funciona como em qualquer formulário. O Foco, que ficava sozinho acima do mapa, entrou na barra: ele também escolhe a visão, e deixá-lo à parte criaria dois lugares de filtro. O `#foco` continua nele, então o link "Ver o seu estado no mapa" da página inicial segue funcionando. Os filtros são leves: rótulo pequeno acima, o valor em texto maior com uma seta e só um fio embaixo, sem caixa. O fundo da faixa aparece sob o ponteiro, e há contorno visível no foco do teclado, só com cores da identidade. A página do município vai reaproveitar esse padrão.
+
+**Layout: painel ao lado do título e uma barra só sobre a figura.** Na primeira versão, título, filtros e abas formavam três faixas, que empurravam metade do mapa para baixo da primeira tela, e a coluna da direita ficava vazia até cerca de 385 px. Agora:
+- o painel sobe até o topo do conteúdo, alinhado com o título, e o número de destaque fica na altura da pergunta;
+- abas e filtros dividem uma barra logo acima do mapa, com "Mapa | Tabela" à esquerda e os quatro filtros à direita, e a barra quebra de forma natural em telas menores;
+- o mapa ocupa toda a largura da sua coluna, porque é a peça principal da página.
+
+A 1440×900, o mapa ia de 443 a 1.155 px de altura e agora vai de 363 a 1.074 px, com os mesmos 787 px de largura: 537 dos 711 px de altura (75,5%) ficam na primeira tela. Numa primeira versão, a largura acompanhava a altura da tela (`min(100%, (100svh − 23,5 rem) / proporção)`), para o mapa caber inteiro na primeira tela. Ele ficava com 579 px de largura e deixava espaço vazio na coluna, e a regra foi descartada na revisão. A legenda dimensiona os círculos pela largura do contêiner, e o contêiner é a figura, da largura do mapa. Os círculos da legenda continuam do tamanho dos círculos do mapa, e o teste que confere isso continua passando.
+
+No celular, a ordem fica: título, número do painel, filtros dois por linha, abas, mapa, e só depois a série e o ranking. Para isso, o painel é dividido em cabeçalho e corpo e usa `display: contents`, com cada parte posicionada por `order`. Como o painel não tem caixa própria no celular, o observador que carrega os arquivos dos estados passou a observar o corpo dele.
+
+O teste novo confere três posições com propósito de produto: a 1440×900, o mapa ocupa a largura da coluna, começa dentro da primeira tela e mostra pelo menos três quartos da altura sem rolar; o número do painel fica ao lado da pergunta do título; e a ordem no celular. O teste do contorno passou a rodar em 1440×900. Numa tela baixa, o mapa fica estreito, e as ilhas oceânicas do contorno ocupam menos de um pixel no canvas, abaixo da opacidade que o teste conta. O teste confere que o título não tem controles, que cada seletor tem rótulo visível e que uma escolha pelo teclado chega ao título e à URL.
+
+**Abas Mapa e Tabela.** O botão "Ver como tabela" abria a tabela longe dele, depois da linha do tempo, e a pessoa achava que nada tinha acontecido. Agora há duas abas sobre a figura, no padrão do Our World in Data e no padrão de abas da WAI-ARIA: `tablist`, `aria-selected`, painéis com `aria-labelledby`, setas, Home e End trocam de aba. A tabela aparece no mesmo espaço e no mesmo tamanho do mapa, com as linhas rolando numa região própria. A aba ativa fica marcada por uma barra na cor do texto. Com a tabela aberta, a lista de símbolos da legenda some, mas as notas que valem para os dados (por exemplo, "O valor da produção começa em 1995") ficam. O teste confere a troca pelo teclado, a aba marcada e a tabela começando no ponto onde o mapa estava, que era a queixa.
+
+**Decomposição: quanto cada fator mudou.** A parte de cada fator no crescimento era correta, mas abstrata para um leitor leigo, e o café (área −96%, produtividade +196%) achatava a escala de todos os outros. A figura passou a mostrar, para cada período, quanto variaram a produção, a área colhida e a produtividade, em porcentagem: fim ÷ início − 1, sobre as médias de três anos das pontas. Cada número é citado pela nova operação de procedência `change`, que lê o `start_…` e o `end_…` do mesmo período.
+
+A escala linear também tem um caso extremo: de 1975 a 2024, a produção de soja variou +1.493% e a de milho +670%, contra no máximo +108% nos períodos de cerca de dez anos. Por isso só os períodos de cerca de dez anos são barras, numa escala comum às três culturas. O período inteiro de cada cultura fica escrito numa linha acima das suas barras.
+
+Cada período tem três barras a partir do mesmo zero: a produção (o resultado) mais fina, no passo mais escuro da escala, e a área e a produtividade mais grossas, em dois passos mais claros. Toda barra traz o nome e o valor ao lado, então a cor não é a única pista. O texto ao lado diz só a leitura, decidida pelos dados: qual fator cresceu mais na soja e no milho e, no café, que a área encolheu. Os números ficam na figura. A nota do café explica que a produção cresceu porque a produtividade subiu mais do que a área caiu. A decomposição em partes continua na tabela da figura.
+
+O formato `pct` passou a agrupar milhares ("1.493%", e não "1493%"). O teste recalcula cada variação do `analysis.json` e confere que a barra vai para o lado do zero que o sinal do dado indica.
+
+**Orçamento.** O Explorar fecha em 715.778 de 716.800 bytes no Lighthouse local, com folga de cerca de 1 KB. O ajuste de layout não aumentou a transferência: a seta passou para a própria `label`, sem os `<span>` extras, e saíram um CSS sem uso e a regra que limitava a largura do mapa. A medição no ar está na seção seguinte. Desse aumento:
+- a decomposição custa cerca de 0,7 KB com gzip;
+- a barra de controles e as abas, cerca de 0,2 KB;
+- o JavaScript, 87 bytes, porque a medição da largura dos filtros saiu;
+- o ícone do site, cerca de 1 KB, uma requisição por página (ver "Ícone do site").
+
+A folga pequena reforça o congelamento do Explorar até o ciclo de dados com a matriz por ano.
+
+## Ícone do site (fase 12)
+
+O ícone é "abaixo da tendência", tirado do gráfico do achado: barras em torno de uma linha de base, e a de seca abaixo dela. O desenho fica numa grade de 64 × 64 com cantos arredondados (raio 14). A versão grande, a partir de 32 px, tem quatro barras e a linha de base, e a terceira barra, na cor da seca, desce abaixo da linha. A versão pequena, de 16 px, tem três barras mais largas e nenhuma linha de base, porque a 16 px uma linha de 1,5 unidade some.
+
+As cores vêm de `identity.ICON`, uma variante por tema do navegador:
+- **Tema claro:** fundo na cor do texto do tema claro, barras no passo claro da escala sequencial e linha de base no neutro.
+- **Tema escuro:** as cores se invertem, com fundo claro e barras escuras.
+
+A barra de seca usa a variante escura da cor da seca (#a36c22) nas duas versões. A variante clara (#895819) tem contraste de 2,85:1 sobre o fundo escuro do ícone, abaixo do mínimo de 3:1 para elementos gráficos. A regra da identidade é que a variante de uma cor acompanha o fundo em que ela está. O verificador da identidade (`check_icon`) confere cada elemento contra o fundo do ícone nas duas variantes:
+
+| Variante | Barras | Seca | Linha de base | Distância seca × barras |
+|---|---|---|---|---|
+| Clara | 14,7:1 | 3,85:1 | 5,5:1 | 44 |
+| Escura | 14,5:1 | 3,85:1 | 4,8:1 | 41 |
+
+A distância é a menor em CAM02-UCS entre visão normal e as três deficiências simuladas. Um teste negativo põe a seca clara no fundo escuro e espera a falha.
+
+Os arquivos são gerados por `scripts/make_web_icons.py` a partir do `identity.py`, sem cores escritas à mão. O teste `tests/test_web_icons.py` falha se eles divergirem: compara o texto do SVG e os pixels dos bitmaps, e não os bytes, que mudam com a versão do Pillow. São três arquivos:
+- **`favicon.svg`:** traz as duas versões e as duas variantes. Um CSS dentro do próprio SVG escolhe a versão pequena até 24 px de largura e a variante escura sob `prefers-color-scheme`. As barras de cada cor são um único `path`, com classes de uma letra, e o arquivo tem 655 bytes.
+- **`favicon.ico`:** a versão grande clara em 32 px, de reserva para navegadores sem ícone em SVG.
+- **`apple-touch-icon.png`:** a versão grande clara em 180 px, sem cantos arredondados, porque o iOS arredonda sozinho.
+
+O layout comum declara os três arquivos. O estilo dentro do SVG fica sob a CSP do site quando o arquivo é aberto, então o gerador do `_headers` passou a calcular o hash dos blocos `<style>` dos arquivos SVG, como já fazia com os do HTML. O teste abre o SVG sob a política e não aceita nenhuma violação; sem o hash, ele falha. Os ícones ficam em cache por um dia, como a imagem de prévia. Cada página baixa o `favicon.svg`, cerca de 1 KB com os cabeçalhos, e todas seguem dentro do orçamento.
+
+## Orçamento do Explorar medido no ar (fase 12)
+
+O orçamento era conferido só localmente, pelo Lighthouse CI. Ele serve o build com o próprio servidor, com gzip e sem aplicar o `_headers`. Em 2026-11-20, a transferência do Explorar foi medida no site no ar, com o Google Chrome, sem cache e na visão padrão, contando cabeçalhos e corpo de cada resposta. A versão publicada, a da `main` antes desta rodada, transferia 743.531 bytes. A mesma versão medida localmente dava 714.162. O orçamento é de 716.800 bytes, então o site no ar já passava dele em cerca de 27 KB.
+
+A diferença vem de três fontes:
+- **Compressão:** a Cloudflare responde ao Chrome com zstd no nível 3, que comprime pior que o gzip local: +5,3 KB na malha, +5,6 KB na matriz e +2,8 KB no React.
+- **Cabeçalhos:** cada resposta leva cerca de 1,3 KB, porque a CSP e os outros cabeçalhos de documento vão também nos dados, fontes e JavaScript. Localmente são cerca de 0,3 KB. Em 13 requisições, isso soma cerca de 13 KB.
+- **Ícone:** sem ícone declarado, o Chrome pedia `/favicon.ico` e recebia a página 404, quase 5 KB. O ícone do site resolve isso.
+
+A malha nacional (326 KB no ar) e a matriz do ano padrão (213 KB) são três quartos da página. Em seguida vêm o React (69 KB) e as três fontes (65 KB). As decisões, de 2026-11-20:
+- **Entrega e medição no ar (aprovada, num PR próprio):** os cabeçalhos de documento (CSP e afins) passam a ir só no HTML e no SVG. A zona passa a preferir brotli, se a regra de compressão valer para as respostas do Worker, o que precisa ser confirmado antes. Medido, o brotli no nível 5 deixaria a malha em 302 KB e a matriz em 201 KB. A verificação depois do deploy passa a medir a transferência real do Explorar e das outras páginas no ar, por enquanto como aviso.
+- **Matriz por ano (aprovada, no ciclo de dados):** a visão padrão passa a baixar só o ano que mostra. Só a coluna de 2025 tem 8.084 bytes com gzip, contra 194.806 da matriz inteira, cerca de −200 KB. Os outros anos carregam conforme a linha do tempo pede. Os totais do Brasil por ano (383 bytes) vêm junto. Entram no mesmo ciclo o `collected_at` e os totais por UF. O ponto representativo sai do ciclo: o cálculo no navegador fica, porque publicá-lo acrescentaria bytes e só pouparia o código do cálculo.
+- **Preact no lugar do React (descartada):** pouparia cerca de 55 KB, segundo a documentação do Preact, mas com a matriz por ano a folga volta e o React fica.
+
+O Explorar segue congelado, mas o gatilho para descongelar passa a ser a matriz por ano, e não os totais por UF. Os totais por UF só ajudam nas outras visões, que hoje baixam os 27 arquivos dos estados.
+
+**Ordem (corrigida pelo usuário no mesmo dia):** num primeiro momento, o ciclo de dados com a matriz por ano subiu para antes da página do município. Ele voltou para depois das páginas. O excesso de cerca de 4% sobre o orçamento é uma melhoria de desempenho a fazer, e não um erro que bloqueia o trabalho. A ordem fica: (1) a branch do Explorar, segunda rodada, e do ícone; (2) o PR da entrega e do orçamento medido no ar; (3) as páginas Município e Método e a parte B da Análise, cada uma com uma rodada de revisão; (4) o ciclo de dados com a matriz por ano, o `collected_at` e os totais por UF; (5) a lista de acabamento, a revisão da paleta e o fechamento. O Explorar segue congelado até o item 4, que continua sendo o gatilho.

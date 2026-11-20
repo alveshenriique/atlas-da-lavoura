@@ -60,6 +60,11 @@ const isCurrent = (match: string[]) =>
     }
     <slot name="head" />
     <title>{fullTitle}</title>
+    {/* The site icon (scripts/make_web_icons.py, from identity.py): the SVG has the small
+        version and the dark variant inside; the ICO is the fallback, the PNG is for iOS. */}
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     {!indexable && <meta name="robots" content="noindex" />}
     {pageStatus(current) !== null && <link rel="canonical" href={canonical} />}
     <meta property="og:type" content="website" />

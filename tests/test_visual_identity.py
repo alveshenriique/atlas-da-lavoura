@@ -57,6 +57,23 @@ def test_site_background_check_catches_low_contrast(monkeypatch):
     assert any(failure.startswith("light band: text") for failure in failures)
 
 
+def test_icon_is_checked_in_both_variants():
+    failures, rows = load_checker().check_icon()
+    assert failures == []
+    assert {(theme, mark) for theme, mark, _ in rows} >= {
+        (theme, mark) for theme in ("light", "dark") for mark in ("bar", "dry", "baseline")
+    }
+
+
+def test_icon_check_catches_the_light_drought_on_the_dark_background(monkeypatch):
+    checker = load_checker()
+    icon = {theme: dict(colours) for theme, colours in checker.vi.ICON.items()}
+    icon["light"]["dry"] = checker.vi.DRY.light
+    monkeypatch.setattr(checker.vi, "ICON", icon)
+    failures, _ = checker.check_icon()
+    assert any(failure.startswith("light icon: dry contrast") for failure in failures)
+
+
 def test_typeface_check_catches_the_dotted_mono_zero(monkeypatch):
     checker = load_checker()
     face = checker.vi.NUMBER_FACE

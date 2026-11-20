@@ -111,7 +111,7 @@ export function format(value: unknown, name: FormatName): string {
     case "pct":
     case "spct": {
       const r = rounded(n * 100, 0);
-      return withSign(`${Math.abs(r)}%`, r, name === "spct");
+      return withSign(`${integer.format(Math.abs(r))}%`, r, name === "spct");
     }
     case "compact":
       return compact(n);
