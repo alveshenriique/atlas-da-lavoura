@@ -8,7 +8,9 @@
 // one concession (style-src-attr 'unsafe-inline'; docs/DECISOES.md, "Publicação do site").
 // The build fails when a page carries something the policy would block anyway (an inline
 // event handler, a javascript: URL, a script or stylesheet from another origin), or when
-// the file breaks Cloudflare's limits (100 rules, 2,000 characters per line).
+// the file breaks Cloudflare's limits (100 rules, 2,000 characters per line). The document
+// headers (CSP and the other policies) go only on pages and SVG files; data, fonts and
+// bundles carry only HSTS, nosniff and their Cache-Control.
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -92,6 +94,34 @@ export const CACHE = {
   images: "public, max-age=86400",
 };
 
+/**
+ * Headers that only mean something on a document (a page, or an SVG opened on its own):
+ * policies the browser applies to what the document loads, embeds or opens. Data, fonts,
+ * scripts, stylesheets and images do not carry them, which saves about 1 KB per response
+ * (docs/DECISOES.md, "Entrega e orçamento medido no ar"). HSTS, nosniff and Cache-Control
+ * go on every response.
+ */
+export const DOCUMENT_HEADERS = [
+  "Content-Security-Policy",
+  "Referrer-Policy",
+  "Permissions-Policy",
+  "X-Frame-Options",
+  "Cross-Origin-Opener-Policy",
+];
+
+/** @type {Array<[string, string]>} Paths that are never a document, with their Cache-Control. */
+export const ASSET_RULES = [
+  // Bundles with a content hash in their names, and the data package of a fixed version.
+  ["/_astro/*", CACHE.immutable],
+  ["/data/*", CACHE.immutable],
+  // Names without a hash: cached for a while, never forever.
+  ["/fonts/*", CACHE.fonts],
+  ["/og/*", CACHE.images],
+  // The site icon's bitmaps (no hash in the names): a day, like the preview image.
+  ["/favicon.ico", CACHE.images],
+  ["/apple-touch-icon.png", CACHE.images],
+];
+
 export function renderHeaders({ csp }) {
   const rule = (pattern, lines) => [pattern, ...lines.map((l) => `  ${l}`)].join("\n");
   const cache = (value) => ["! Cache-Control", `Cache-Control: ${value}`];
@@ -106,15 +136,12 @@ export function renderHeaders({ csp }) {
       "Cross-Origin-Opener-Policy: same-origin",
       `Cache-Control: ${CACHE.html}`,
     ]),
-    // Bundles with a content hash in their names, and the data package of a fixed version.
-    rule("/_astro/*", cache(CACHE.immutable)),
-    rule("/data/*", cache(CACHE.immutable)),
-    // Names without a hash: cached for a while, never forever.
-    rule("/fonts/*", cache(CACHE.fonts)),
-    rule("/og/*", cache(CACHE.images)),
-    // The site icon (no hash in the names): a day, like the preview image.
-    rule("/favicon.*", cache(CACHE.images)),
-    rule("/apple-touch-icon.png", cache(CACHE.images)),
+    ...ASSET_RULES.map(([pattern, value]) =>
+      rule(pattern, [...cache(value), ...DOCUMENT_HEADERS.map((name) => `! ${name}`)]),
+    ),
+    // The SVG icon is a document when opened on its own (its <style> is in the CSP): it keeps
+    // the document headers and is cached for a day.
+    rule("/favicon.svg", cache(CACHE.images)),
     // Preview versions (Version URLs) on workers.dev stay out of search engines.
     rule("https://:version.:account.workers.dev/*", ["X-Robots-Tag: noindex"]),
   ];
