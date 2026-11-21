@@ -4,6 +4,7 @@
 // `wrangler dev` (playwright.config.ts), the same static-assets engine as production.
 import AxeBuilder from "@axe-core/playwright";
 
+import { DOCUMENT_HEADERS } from "../scripts/make-headers.mjs";
 import { SITE_PAGES, SITEMAP_PATHS } from "../src/lib/site-pages";
 import { expect, type Page, test } from "./test";
 
@@ -52,7 +53,7 @@ test.describe("response headers", () => {
     });
   }
 
-  test("versioned data and hashed bundles are immutable, fonts are cached for a month", async ({
+  test("versioned data and hashed bundles are immutable, fonts are cached for a month, and none carries the document headers", async ({
     page,
     request,
   }) => {
@@ -61,14 +62,20 @@ test.describe("response headers", () => {
     const styles = await page.locator("link[rel='stylesheet'][href^='/_astro/']").first().getAttribute("href");
     const island = await page.locator("astro-island[component-url^='/_astro/']").first().getAttribute("component-url");
     const immutable = "public, max-age=31536000, immutable";
-    for (const path of [`${base}catalog.json`, styles ?? "", island ?? ""]) {
+    const files = [`${base}catalog.json`, styles ?? "", island ?? ""];
+    for (const path of files) expect((await request.get(path)).headers()["cache-control"], path).toBe(immutable);
+    const font = "/fonts/AtlasDisplayNumber-Bold.woff";
+    expect((await request.get(font)).headers()["cache-control"]).toBe("public, max-age=2592000");
+    // HSTS and nosniff reach every file; the document policies (CSP and the others) only the
+    // pages and the SVG files, which are documents when opened on their own.
+    for (const path of [...files, font, "/favicon.ico", "/apple-touch-icon.png", "/og/atlas-da-lavoura.png"]) {
       const h = (await request.get(path)).headers();
-      expect(h["cache-control"], path).toBe(immutable);
-      // The security headers reach every file, not only the pages.
       expect(h["x-content-type-options"], path).toBe("nosniff");
+      expect(h["strict-transport-security"], path).toMatch(/^max-age=\d+; includeSubDomains$/);
+      for (const name of DOCUMENT_HEADERS) expect(h[name.toLowerCase()], `${path} ${name}`).toBeUndefined();
     }
-    const font = (await request.get("/fonts/AtlasDisplayNumber-Bold.woff")).headers();
-    expect(font["cache-control"]).toBe("public, max-age=2592000");
+    const svg = (await request.get("/favicon.svg")).headers();
+    for (const name of DOCUMENT_HEADERS) expect(svg[name.toLowerCase()], `/favicon.svg ${name}`).toBeDefined();
   });
 
   test("the policy blocks an injected inline script and event handler", async ({ browser }) => {

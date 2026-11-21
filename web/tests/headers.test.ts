@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
 
 import {
+  ASSET_RULES,
   CACHE,
   checkLimits,
   contentSecurityPolicy,
+  DOCUMENT_HEADERS,
   hashSource,
   inlineBlocks,
   LIMITS,
@@ -72,5 +74,17 @@ describe("the _headers generator", () => {
     expect(checkLimits(`/*\n  X: ${"a".repeat(LIMITS.lineLength)}\n`)).toEqual([
       `a line of ${LIMITS.lineLength + 5} characters (limit ${LIMITS.lineLength})`,
     ]);
+  });
+
+  it("sends the document policies only with pages and SVG files", () => {
+    const text = renderHeaders({ csp: "default-src 'none'" });
+    const block = (pattern: string) => text.split("\n\n").find((b) => b.startsWith(`${pattern}\n`)) ?? "";
+    for (const [pattern] of ASSET_RULES) {
+      for (const name of DOCUMENT_HEADERS) expect(block(pattern), pattern).toContain(`  ! ${name}`);
+      // HSTS and nosniff, set by /*, are never dropped.
+      expect(block(pattern), pattern).not.toMatch(/! (Strict-Transport-Security|X-Content-Type-Options)/);
+    }
+    expect(block("/favicon.svg")).not.toContain("! Content-Security-Policy");
+    expect(ASSET_RULES.map(([pattern]) => pattern)).not.toContain("/favicon.svg");
   });
 });

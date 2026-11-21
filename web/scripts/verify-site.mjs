@@ -13,17 +13,25 @@
 //   Cloudflare injects scripts (the Web Analytics beacon, email obfuscation, Rocket Loader)
 //   only into responses for browsers; data and bundles are immutable, and HTML is always
 //   revalidated, with an ETag that answers 304 (an injection on the way drops it);
+// - data, fonts, bundles and images carry HSTS and nosniff but not the document policies
+//   (CSP and the others), which go only on pages and SVG files;
 // - in a real browser, the Análise and the Explorar (map drawn) run without a single CSP
 //   violation or page error;
+// - the real transfer of the four main pages, as a browser without cache receives it
+//   (compression chosen by Cloudflare, headers included), is compared with the budgets of
+//   lighthouserc.desktop.json. For now a page over its budget is a warning, not a failure
+//   (docs/DECISOES.md, "Entrega e orçamento medido no ar");
 // - the dbt docs answer over HTTPS (--docs).
-// Exits 1 when any check fails; writes a summary to $GITHUB_STEP_SUMMARY when it exists.
+// Exits 1 when any check fails (warnings do not); writes a summary to $GITHUB_STEP_SUMMARY
+// when it exists.
 import { appendFileSync, readFileSync } from "node:fs";
 import { connect } from "node:tls";
 
 import { chromium } from "@playwright/test";
 
 import { robotsTxt } from "../src/lib/site-pages.ts";
-import { CACHE, hashSource, inlineBlocks } from "./make-headers.mjs";
+import { budgetFor } from "./budgets.mjs";
+import { CACHE, DOCUMENT_HEADERS, hashSource, inlineBlocks } from "./make-headers.mjs";
 
 const args = process.argv.slice(2);
 const docsAt = args.indexOf("--docs");
@@ -39,11 +47,46 @@ const AS_BROWSER = {
   accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
   "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0 Safari/537.36",
 };
+const BUDGET_PAGES = ["/", "/explorar/", "/municipios/", "/metodo/"];
+// Over budget is a warning until the data cycle with the Explorar matrix by year; then
+// this becomes false and a page over its budget fails the verification.
+const BUDGET_WARNS_ONLY = true;
 const results = [];
 
-function check(name, ok, detail = "") {
-  results.push({ name, ok, detail });
-  console.log(`${ok ? "ok  " : "FAIL"}  ${name}${detail ? ` (${detail})` : ""}`);
+function check(name, ok, detail = "", { warn = false } = {}) {
+  results.push({ name, ok, detail, warn: warn && !ok });
+  console.log(`${ok ? "ok  " : warn ? "WARN" : "FAIL"}  ${name}${detail ? ` (${detail})` : ""}`);
+}
+
+const bytes = (n) => n.toLocaleString("pt-BR");
+
+/**
+ * What a browser without cache transfers to show a page: every response, headers and body as
+ * they came over the network (Chrome's encodedDataLength), until the network is idle; on the
+ * Explorar, after the map is drawn.
+ */
+async function transfer(browser, url, { map }) {
+  const context = await browser.newContext({ viewport: { width: 1350, height: 940 } });
+  const page = await context.newPage();
+  const cdp = await context.newCDPSession(page);
+  await cdp.send("Network.enable");
+  await cdp.send("Network.setCacheDisabled", { cacheDisabled: true });
+  const responses = new Map();
+  cdp.on("Network.responseReceived", (e) => {
+    const encoding = Object.entries(e.response.headers).find(([k]) => k.toLowerCase() === "content-encoding")?.[1];
+    responses.set(e.requestId, { url: e.response.url, encoding: encoding ?? "none" });
+  });
+  cdp.on("Network.loadingFinished", (e) => {
+    const r = responses.get(e.requestId);
+    if (r) r.bytes = e.encodedDataLength;
+  });
+  await page.goto(url, { waitUntil: "load", timeout: 60_000 });
+  if (map) await page.locator(".explore__map[data-ready='true']").waitFor({ timeout: 60_000 });
+  await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => {});
+  const done = [...responses.values()].filter((r) => r.bytes !== undefined);
+  await context.close();
+  const encodings = [...new Set(done.filter((r) => r.encoding !== "none").map((r) => r.encoding))];
+  return { total: done.reduce((sum, r) => sum + r.bytes, 0), requests: done.length, encodings };
 }
 
 async function get(url, init = {}) {
@@ -151,6 +194,16 @@ const robots = Buffer.from(await (await get(`${origin}/robots.txt`)).arrayBuffer
 const expected = Buffer.from(robotsTxt(), "utf8");
 check("robots.txt is byte for byte the one of the build", robots.equals(expected),
   robots.equals(expected) ? `${robots.length} bytes` : `${robots.length} bytes served, ${expected.length} expected; starts with ${JSON.stringify(robots.subarray(0, 60).toString("utf8"))}`);
+const assets = [`/data/${pointer.data_version}/catalog.json`, ...(bundle ? [bundle] : []), "/fonts/IBMPlexSans-Regular-Latin1.woff2", "/favicon.ico"];
+const carrying = [];
+for (const path of assets) {
+  const h = (await get(`${origin}${path}`)).headers;
+  if (h.get("x-content-type-options") !== "nosniff" || !h.get("strict-transport-security")) carrying.push(`${path} without nosniff or HSTS`);
+  for (const name of DOCUMENT_HEADERS) if (h.has(name)) carrying.push(`${path} ${name}`);
+}
+check("files carry HSTS and nosniff, not the document policies", carrying.length === 0, carrying.join(", ") || `${assets.length} files`);
+const svg = (await get(`${origin}/favicon.svg`)).headers;
+check("the SVG icon carries the CSP", (svg.get("content-security-policy") ?? "").includes("style-src-elem"));
 const missing = await get(`${origin}/nao-existe/`);
 check("an unknown address answers 404 with the site's page", missing.status === 404 && (await missing.text()).includes("Este endereço não existe"), String(missing.status));
 if (docs) {
@@ -182,12 +235,23 @@ for (const path of ["/", "/explorar/"]) {
   check(`${path} runs in the browser without CSP violations or errors`, problems.length === 0, problems.join(" | "));
   await page.close();
 }
+
+// --- the real transfer of the main pages against their budgets ---
+for (const path of BUDGET_PAGES) await guarded(`${path} transfer`, async () => {
+  const budget = budgetFor(path);
+  const measured = await transfer(browser, `${origin}${path}`, { map: path === "/explorar/" });
+  const share = budget ? ((measured.total / budget) * 100).toFixed(1).replace(".", ",") : "?";
+  check(`${path} transfer is within its budget`, budget !== undefined && measured.total <= budget,
+    `${bytes(measured.total)} of ${budget ? bytes(budget) : "no budget"} bytes (${share}%), ${measured.requests} responses, ${measured.encodings.join("/") || "uncompressed"}`,
+    { warn: BUDGET_WARNS_ONLY });
+});
 await browser.close();
 
-const failed = results.filter((r) => !r.ok);
+const failed = results.filter((r) => !r.ok && !r.warn);
+const warned = results.filter((r) => r.warn);
 if (process.env.GITHUB_STEP_SUMMARY) {
-  const rows = results.map((r) => `| ${r.ok ? "ok" : "**falhou**"} | ${r.name} | ${r.detail.replaceAll("|", "\\|")} |`);
+  const rows = results.map((r) => `| ${r.ok ? "ok" : r.warn ? "aviso" : "**falhou**"} | ${r.name} | ${r.detail.replaceAll("|", "\\|")} |`);
   appendFileSync(process.env.GITHUB_STEP_SUMMARY, [`### Verificação de ${origin}`, "", "| | Verificação | Detalhe |", "|---|---|---|", ...rows, ""].join("\n"));
 }
-console.log(`\n${results.length - failed.length} of ${results.length} checks passed`);
+console.log(`\n${results.length - failed.length - warned.length} of ${results.length} checks passed, ${warned.length} warnings`);
 process.exit(failed.length === 0 ? 0 : 1);
