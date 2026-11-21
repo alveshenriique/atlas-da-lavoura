@@ -19,7 +19,7 @@
 //   violation or page error;
 // - the real transfer of the four main pages, as a browser without cache receives it
 //   (compression chosen by Cloudflare, headers included), is compared with the budgets of
-//   lighthouserc.desktop.json. For now a page over its budget is a warning, not a failure
+//   lighthouserc.desktop.json; a page over its budget fails the verification
 //   (docs/DECISOES.md, "Entrega e orçamento medido no ar");
 // - the dbt docs answer over HTTPS (--docs).
 // Exits 1 when any check fails (warnings do not); writes a summary to $GITHUB_STEP_SUMMARY
@@ -48,9 +48,9 @@ const AS_BROWSER = {
   "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0 Safari/537.36",
 };
 const BUDGET_PAGES = ["/", "/explorar/", "/municipios/", "/metodo/"];
-// Over budget is a warning until the data cycle with the Explorar matrix by year; then
-// this becomes false and a page over its budget fails the verification.
-const BUDGET_WARNS_ONLY = true;
+// Over budget fails the verification. It was only a warning while the Explorar was above its
+// budget on the live site; with gzip preferred on the zone it fits, so the rule is enforced.
+const BUDGET_WARNS_ONLY = false;
 const results = [];
 
 function check(name, ok, detail = "", { warn = false } = {}) {
