@@ -17,8 +17,9 @@
 //   (CSP and the others), which go only on pages and SVG files;
 // - in a real browser, the Análise and the Explorar (map drawn) run without a single CSP
 //   violation or page error;
-// - the real transfer of the four main pages, as a browser without cache receives it
-//   (compression chosen by Cloudflare, headers included), is compared with the budgets of
+// - the real transfer of the four main pages and of the heaviest municipality page, as a
+//   browser without cache receives it (compression chosen by Cloudflare, headers
+//   included), is compared with the budgets of
 //   lighthouserc.desktop.json; a page over its budget fails the verification
 //   (docs/DECISOES.md, "Entrega e orçamento medido no ar");
 // - the dbt docs answer over HTTPS (--docs).
@@ -47,7 +48,8 @@ const AS_BROWSER = {
   accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
   "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0 Safari/537.36",
 };
-const BUDGET_PAGES = ["/", "/explorar/", "/municipios/", "/metodo/"];
+// The main pages and the heaviest municipality page (its region has the most data).
+const BUDGET_PAGES = ["/", "/explorar/", "/municipios/", "/metodo/", "/municipio/3155504/"];
 // Over budget fails the verification. It was only a warning while the Explorar was above its
 // budget on the live site; with gzip preferred on the zone it fits, so the rule is enforced.
 const BUDGET_WARNS_ONLY = false;
