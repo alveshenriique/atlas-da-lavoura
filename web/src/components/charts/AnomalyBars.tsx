@@ -57,6 +57,10 @@ export function layout(props: Pick<AnomalyBarsProps, "years" | "extent" | "varia
   return { x, y, width, height, zero: y(0) };
 }
 
+// SVG coordinates to a tenth of a unit of the 1,000-unit box: invisible, and the HTML of
+// the 5,571 municipality pages, which repeat this chart, much lighter.
+const r1 = (value: number) => Math.round(value * 10) / 10;
+
 const pct = (value: number, total: number) => `${((value / total) * 100).toFixed(3)}%`;
 
 export default function AnomalyBars(props: AnomalyBarsProps) {
@@ -99,18 +103,18 @@ export default function AnomalyBars(props: AnomalyBarsProps) {
               className={tick.value === 0 ? "anomaly-chart__zero" : "anomaly-chart__grid"}
               x1={0}
               x2={width}
-              y1={y(tick.value)}
-              y2={y(tick.value)}
+              y1={r1(y(tick.value))}
+              y2={r1(y(tick.value))}
               vectorEffect="non-scaling-stroke"
             />
           ))}
-          {!props.yTicks && (
+          {!props.yTicks?.some((tick) => tick.value === 0) && (
             <line
               className="anomaly-chart__zero"
               x1={0}
               x2={width}
-              y1={zero}
-              y2={zero}
+              y1={r1(zero)}
+              y2={r1(zero)}
               vectorEffect="non-scaling-stroke"
             />
           )}
@@ -118,10 +122,10 @@ export default function AnomalyBars(props: AnomalyBarsProps) {
             <rect
               key={`missing-${year}`}
               className="anomaly-chart__missing"
-              x={x(year)}
-              y={zero - missingHeight / 2}
-              width={band}
-              height={missingHeight}
+              x={r1(x(year) ?? 0)}
+              y={r1(zero - missingHeight / 2)}
+              width={r1(band)}
+              height={r1(missingHeight)}
               vectorEffect="non-scaling-stroke"
               aria-hidden="true"
             />
@@ -134,10 +138,10 @@ export default function AnomalyBars(props: AnomalyBarsProps) {
                 className={`bar ${bar.deficit ? "bar--deficit" : "bar--other"} ${
                   bar.anomaly < 0 ? "bar--down" : "bar--up"
                 }`}
-                x={x(bar.year)}
-                y={Math.min(end, zero)}
-                width={band}
-                height={Math.max(Math.abs(end - zero), 0.5)}
+                x={r1(x(bar.year) ?? 0)}
+                y={r1(Math.min(end, zero))}
+                width={r1(band)}
+                height={r1(Math.max(Math.abs(end - zero), 0.5))}
                 vectorEffect="non-scaling-stroke"
                 style={{ "--i": i } as CSSProperties}
                 role="img"

@@ -19,6 +19,7 @@ export const SITE_PAGES: readonly SitePage[] = [
   { path: "/", prefix: false, status: "ready" },
   { path: "/explorar/", prefix: false, status: "ready" },
   { path: "/municipios/", prefix: false, status: "under-construction" },
+  { path: "/municipios/", prefix: true, status: "under-construction" },
   { path: "/municipio/", prefix: true, status: "under-construction" },
   { path: "/metodo/", prefix: false, status: "under-construction" },
 ];

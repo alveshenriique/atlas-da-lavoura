@@ -1,56 +1,435 @@
 ---
-// One static page per municipality, at /municipio/<código IBGE>/, generated from the
-// municipality index of the data package. Still a skeleton, with the "em construção" notice:
-// the profile comes in its own step.
+// One page per municipality, at /municipio/<código IBGE>/, built entirely at build time from
+// the data package (lib/municipality.ts): the browser fetches no data file. After the
+// approved draft (editorial version) with the adjustments of the combined direction: the
+// latest harvest of each crop (Tabela 1), the yield against the region, the state and Brazil
+// (Figura 1), the drought risk of the immediate region (never of the municipality) and where
+// the municipality is. Every data number cites its place in the package.
+import "../../styles/analysis.css";
+import "../../styles/municipality.css";
+
+import DroughtBlock from "../../components/municipality/DroughtBlock.astro";
+import YieldLines from "../../components/municipality/YieldLines.astro";
+import Num from "../../components/Num.astro";
+import Structural from "../../components/Structural.astro";
 import UnderConstruction from "../../components/UnderConstruction.astro";
 import Base from "../../layouts/Base.astro";
-import { loadDataFile } from "../../lib/data";
+import { brdwgdShortCitation } from "../../lib/citations";
+import { dataBasePath, loadDataFile } from "../../lib/data";
+import { minimap } from "../../lib/minimap";
+import { type Cell, municipalityIds, municipalityModel } from "../../lib/municipality";
+import { sourced } from "../../lib/sourced";
+import { tokens } from "../../lib/tokens";
 import { bindShortWords } from "../../lib/typography";
 import type { MunicipalitiesJson } from "../../types/data/municipalities";
 
 export function getStaticPaths() {
-  const { municipalities, states } = loadDataFile<MunicipalitiesJson>("municipalities.json");
-  const stateName = new Map(
-    states.state_abbreviation.map((abbreviation, i) => [abbreviation, states.state_name[i]]),
-  );
-  return municipalities.municipality_id.map((id, i) => {
-    const state = municipalities.state_abbreviation[i] ?? "";
-    return {
-      params: { id: String(id) },
-      props: {
-        name: municipalities.municipality_name[i] ?? "",
-        state,
-        stateName: stateName.get(state) ?? state,
-      },
-    };
-  });
+  return municipalityIds().map((id) => ({ params: { id: String(id) }, props: { id } }));
 }
 
 interface Props {
-  name: string;
-  state: string;
-  stateName: string;
+  id: number;
 }
 
-const { name, state, stateName } = Astro.props;
+const m = municipalityModel(Astro.props.id);
+const { municipalities } = loadDataFile<MunicipalitiesJson>("municipalities.json");
+const stateId = Math.floor(m.id / 100000);
+const regionIds = municipalities.municipality_id.filter(
+  (_, k) => municipalities.immediate_region_id[k] === m.regionId,
+);
+const map = await minimap(m.uf, stateId, regionIds, m.id);
+const regionCount = sourced(m.regionFile, "/municipalities", "int", "count");
+const brdwgd = brdwgdShortCitation();
+const preloads = [
+  tokens.typefaces.numbers.files.find((file) => file.weight === 600),
+].filter((file) => file !== undefined);
+
+const cellText = (c: Cell) =>
+  c.kind === "zero" ? "não produziu" : c.kind === "notyet" ? "ainda não existia" : "sem dado";
+const territories = [
+  { key: "region", label: "Na região" },
+  { key: "state", label: `No ${m.uf}` },
+  { key: "country", label: "No Brasil" },
+] as const;
+const climateShown = m.climate.filter((c) => c.id === "soybean" || m.uf === "MG");
+const growsCrop = (id: string) => m.figures.some((f) => f.id === id);
+// Notes on the crops without a drought analysis, only for the crops the municipality grows.
+const growsCoffee = ["coffee_processed", "coffee_in_husk", "coffee_arabica", "coffee_canephora"].some(growsCrop);
+const climateNotes = [
+  ...(growsCrop("corn") ? ["O milho não tem análise de clima neste projeto."] : []),
+  ...(growsCoffee && m.uf !== "MG" ? ["O café só tem análise de clima para o arábica em Minas Gerais."] : []),
+];
+let figureNumber = m.figures.length > 0 ? 1 : 0;
+const coffeeBreak = sourced("catalog.json", "/parameters/coffee_unit_break_year", "year");
+const coffeeBreakdown = sourced("catalog.json", "/parameters/coffee_breakdown_first_year", "year");
+const nextFigure = () => ++figureNumber;
+const description = `${m.name} (${m.uf}): produção de soja, milho e café, comparação com a região imediata de ${m.regionName}, ${m.stateName} e o Brasil, e o risco de seca da região.`;
+const main = m.main;
+const firstLater = m.firstPamYear !== null && Number(m.firstPamYear.value) > 1974;
 ---
 
-<Base
-  title={`${name} (${state})`}
-  description={`Ficha de ${name} (${stateName}): produção, comparação com a região e o estado, ranking e risco de seca da região.`}
->
+<Base title={`${m.name} (${m.uf})`} description={description}>
+  <Fragment slot="head">
+    {
+      preloads.map((file) => (
+        <link rel="preload" href={file.url} as="font" type="font/woff2" crossorigin />
+      ))
+    }
+  </Fragment>
   <UnderConstruction>
     <p>
-      A ficha deste município (produção, comparação com a região e o estado, ranking e risco de
-      seca na floração da região) ainda está sendo feita. Enquanto isso, a produção dele pode
-      ser vista no mapa do <a href={`/explorar/?uf=${state}`}>Explorar, com {stateName} em foco</a>.
+      A ficha deste município ainda está em revisão. A produção dele também pode ser vista no
+      mapa do <a href={`/explorar/?uf=${m.uf}`}>Explorar, com {m.stateName} em foco</a>.
     </p>
   </UnderConstruction>
-  <div class="container grid">
-    <div class="col-text">
-      <p class="kicker">Município · {stateName}</p>
-      <h1>{bindShortWords(name)}</h1>
-      <p><a href="/">Voltar para a Análise</a></p>
+
+  <article class="ficha">
+    <div class="container">
+    <header class="ficha__head">
+      <div class="ficha__name">
+        <p class="kicker">
+          {m.stateName} · Região imediata de {m.regionName} · IBGE <Num n={m.code} />
+        </p>
+        <h1 class="ficha__title">{bindShortWords(m.name)}</h1>
+        <ul class="ficha__links small" aria-label="Links da ficha">
+          <li><button type="button" class="link-button" data-copy-link hidden>Copiar link</button></li>
+          <li><a href={`${dataBasePath}/${m.regionFile}`} type="application/json">Dados</a></li>
+          <li><a href="/metodo/">Método</a></li>
+        </ul>
+      </div>
+      <div class="ficha__highlight">
+        {
+          main?.production.n ? (
+            <>
+              <p class="ficha__number">
+                <Num n={main.production.n} />
+                <span class="ficha__unit">t</span>
+              </p>
+              <p class="ficha__sub small">
+                de {main.lower} em <Num n={main.year} />
+                {main.ranks.state && (
+                  <>
+                    {" "}· <Num n={main.ranks.state.position} />º no {m.uf}
+                  </>
+                )}
+                {main.ranks.country && (
+                  <>
+                    {" "}· <Num n={main.ranks.country.position} />º no Brasil
+                  </>
+                )}
+              </p>
+            </>
+          ) : m.neverInPam ? (
+            <p class="ficha__none">Sem registro de lavouras na Produção Agrícola Municipal.</p>
+          ) : (
+            <p class="ficha__none">
+              Em <Num n={m.latestYear} />, não produziu soja, milho nem café.
+            </p>
+          )
+        }
+      </div>
+    </header>
+
+    {
+      m.neverInPam ? (
+        <section class="ficha__section" aria-labelledby="producao">
+          <h2 id="producao" class="ficha__h2">Produção</h2>
+          <p class="ficha__text">
+            O IBGE não publica dados de lavoura para {m.name} na Produção Agrícola Municipal, em
+            nenhum ano. Por isso esta ficha não tem produção nem comparação; o risco de seca e a
+            localização, que são da região, aparecem abaixo.
+          </p>
+        </section>
+      ) : (
+        <section class="ficha__section" aria-labelledby="tabela-1-titulo">
+          <div class="ficha__caption-row">
+            <h2 id="tabela-1-titulo" class="figure__title">
+              <Structural kind="table" n={1} />. Safra <Num n={m.latestYear} />: produção, rendimento e
+              posição
+            </h2>
+            <button type="button" class="link-button small" data-csv="tabela-1" data-csv-name={`${m.id}-safra`} hidden>
+              Baixar CSV
+            </button>
+          </div>
+          {firstLater && m.firstPamYear && (
+            <p class="ficha__note small">
+              {m.name} aparece na Produção Agrícola Municipal a partir de <Num n={m.firstPamYear} />; antes, o
+              território fazia parte de outro município.
+            </p>
+          )}
+          <div class="table-scroll" tabindex="0" role="region" aria-labelledby="tabela-1-titulo">
+            <table id="tabela-1" class="crops">
+              <thead>
+                <tr>
+                  <th scope="col">Cultura</th>
+                  <th scope="col" class="num-col">Produção</th>
+                  <th scope="col" class="num-col">Área colhida (ha)</th>
+                  <th scope="col" class="num-col">Rendimento (kg/ha)</th>
+                  {territories.map((t) => (
+                    <th scope="col" class="num-col">
+                      {t.label}
+                    </th>
+                  ))}
+                  <th scope="col" class="crops__spark-col">
+                    Produção, série
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {m.rows.map((row) => {
+                  const max = Math.max(...row.spark.values.map((v) => v ?? 0), 1);
+                  const n = row.spark.values.length;
+                  return (
+                    <tr class:list={["crops__row", { "crops__row--sub": row.sub }]} data-series={row.id}>
+                      <th scope="row">
+                        {row.label}
+                        <span class="crops__unit small">
+                          {" "}
+                          ({row.unit})
+                        </span>
+                      </th>
+                      <td class="num">
+                        {row.production.n ? <Num n={row.production.n} /> : <span class="crops__state">{cellText(row.production)}</span>}
+                        {row.lastProduced && (
+                          <span class="crops__last small">
+                            {" "}
+                            (última em <Num n={row.lastProduced} />)
+                          </span>
+                        )}
+                      </td>
+                      <td class="num">{row.area.n ? <Num n={row.area.n} /> : <span class="crops__state">{cellText(row.area)}</span>}</td>
+                      <td class="num">
+                        {row.yieldKgHa.n ? (
+                          <>
+                            <Num n={row.yieldKgHa.n} />
+                            {row.yieldKgHa.kind === "small" && <span class="crops__small small"> área pequena</span>}
+                          </>
+                        ) : (
+                          <span class="crops__state">{cellText(row.yieldKgHa)}</span>
+                        )}
+                      </td>
+                      {territories.map((t) => {
+                        const rank = row.ranks[t.key];
+                        const share = row.shares[t.key];
+                        return (
+                          <td class="num crops__rank">
+                            {rank ? (
+                              <>
+                                <Num n={rank.position} />º de <Num n={rank.of} />
+                                {share && (
+                                  <span class="crops__share">
+                                    {" "}
+                                    · <Num n={share} />
+                                  </span>
+                                )}
+                              </>
+                            ) : (
+                              "—"
+                            )}
+                          </td>
+                        );
+                      })}
+                      <td class="crops__spark">
+                        {n > 1 && (
+                          <svg viewBox={`0 0 ${n} 20`} preserveAspectRatio="none" aria-hidden="true">
+                            {row.spark.values.map((v, k) =>
+                              v !== null && v > 0 ? (
+                                <rect x={k + 0.12} width="0.76" y={20 - (v / max) * 20} height={(v / max) * 20} />
+                              ) : null,
+                            )}
+                          </svg>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p class="ficha__note small">
+            Posição pela produção entre os municípios que produziram a cultura na região imediata, no
+            estado e no Brasil, e a participação na produção de cada um. Rendimento é a produção
+            dividida pela área colhida; com área colhida pequena demais, ele não é comparado.
+          </p>
+        </section>
+      )
+    }
+
+    {
+      m.figures.length > 0 && (
+        <section id="figura-1" class="ficha__section series" aria-labelledby="figura-1-titulo" data-series-figure>
+          <div class="series__head">
+            <h2 id="figura-1-titulo" class="figure__title">
+              <Structural kind="figure" n={1} />. Rendimento: {m.name}, a região, o {m.uf} e o Brasil
+            </h2>
+          </div>
+          <div class="series__toolbar">
+            <div class="series__tabs" role="tablist" aria-label="Formato da figura" hidden>
+              <button type="button" role="tab" id="aba-grafico" aria-selected="true" aria-controls="figura-1-paineis">
+                Gráfico
+              </button>
+              <button type="button" role="tab" id="aba-tabela" aria-selected="false" aria-controls="figura-1-paineis" tabindex="-1">
+                Tabela
+              </button>
+            </div>
+            <label class="series__control" hidden>
+              <span class="series__control-label small">Cultura</span>
+              <select data-series-select>
+                {m.figures.map((f) => (
+                  <option value={f.id} selected={f.id === (main?.id ?? m.figures[0]?.id)}>
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div id="figura-1-paineis" class="series__panels" role="tabpanel" aria-labelledby="aba-grafico">
+            {m.figures.map((f) => (
+              <div class="series__panel" data-series-panel={f.id} aria-label={f.label} role="group">
+                <h3 class="series__crop">{f.label}</h3>
+                <div class="series__chart">
+                  {f.chart ? (
+                    <YieldLines figure={f} />
+                  ) : (
+                    <p class="series__note small">
+                      O café em coco vai até <Num n={f.lastYear} /> e não entra no gráfico: o IBGE mudou a
+                      unidade do café em <Num n={coffeeBreak} />, e as duas séries não se comparam. Os valores
+                      estão na tabela.
+                    </p>
+                  )}
+                </div>
+                <details class="series__data" data-series-data>
+                  <summary>Ver os dados em tabela</summary>
+                  <div class="table-scroll" tabindex="0" role="region" aria-label={`${f.label}: dados por safra`}>
+                    <table
+                      id={`dados-${f.id}`}
+                      class="series__table"
+                      data-src-columns={f.table.columns.map((c) => c.template).join(" ")}
+                    >
+                      <thead>
+                        <tr>
+                          {f.table.columns.map((c) => (
+                            <th scope="col">{c.header}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {f.table.rows.map((row) => (
+                          <tr data-row={row.index}>
+                            {row.cells.map((text, k) =>
+                              k === 0 ? (
+                                <th scope="row" class="num">
+                                  {text}
+                                </th>
+                              ) : (
+                                <td class="num">{text}</td>
+                              ),
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <button type="button" class="link-button small" data-csv={`dados-${f.id}`} data-csv-name={`${m.id}-${f.id}`} hidden>
+                    Baixar CSV
+                  </button>
+                </details>
+              </div>
+            ))}
+          </div>
+          <div class="figure__caption small">
+            <p>
+            <a href="/metodo/#fontes">Fonte</a>: IBGE, Produção Agrícola Municipal. Rendimento é a
+            produção dividida pela área colhida, de cada território; anos sem dado, sem colheita ou com
+            área colhida pequena demais ficam como falha na linha. O café beneficiado começa em{" "}
+            <Num n={coffeeBreak} />, quando o IBGE mudou a unidade; o arábica e o canéfora, em{" "}
+            <Num n={coffeeBreakdown} />.
+            </p>
+          </div>
+        </section>
+      )
+    }
+
     </div>
-  </div>
+    <section id="risco-de-seca" class="ficha__risk band" aria-labelledby="risco-titulo">
+      <div class="container">
+        <h2 id="risco-titulo" class="ficha__h2">Risco de seca na região de {m.regionName}</h2>
+        <p class="ficha__why">
+          O risco é medido na região imediata de {m.regionName}, e não em {m.name}: no nível de um
+          município, o rendimento varia demais de um ano para outro para separar o efeito do clima.
+          A seca conta só na fase em que a cultura mais sente a falta de água. É uma associação, não
+          uma causa.
+        </p>
+        {
+          climateNotes.length > 0 && (
+            <ul class="ficha__climate-notes small">
+              {climateNotes.map((note) => (
+                <li>{note}</li>
+              ))}
+            </ul>
+          )
+        }
+        {
+          climateShown.map((block) => (
+            <DroughtBlock
+              block={block}
+              regionName={m.regionName}
+              figure={block.bars.length > 0 && block.years ? nextFigure() : 0}
+              hasCrop={growsCrop(block.id) || (block.id === "soybean" && block.status !== "none")}
+            />
+          ))
+        }
+        <div class="figure__caption small">
+          <p>
+            <a href="/metodo/#fontes">Fonte</a>: IBGE (PAM), BR-DWGD ({brdwgd.author} et al., <Num n={brdwgd.year} />)
+            e Conab (calendário de plantio e colheita).
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <div class="container">
+    <section class="ficha__section ficha__where" aria-labelledby="onde-fica">
+      <h2 id="onde-fica" class="ficha__h2">Onde fica</h2>
+      <div class="ficha__where-row">
+        <svg
+          class="minimap"
+          viewBox={map.viewBox}
+          role="img"
+          aria-label={`Mapa de ${m.stateName} com ${m.name} em destaque e os outros municípios da região imediata de ${m.regionName}`}
+        >
+          <path class="minimap__state" d={map.outline}></path>
+          <path class="minimap__region" d={map.region}></path>
+          <path class="minimap__own" d={map.municipality}></path>
+          {map.marker && <circle class="minimap__marker" cx={map.marker.x} cy={map.marker.y} r="14"></circle>}
+        </svg>
+        <div class="ficha__where-text">
+          <p>
+            A região imediata de {m.regionName}, em {m.stateName}, tem <Num n={regionCount} /> municípios.
+            {m.neighbours.length > 0 && " Os outros:"}
+          </p>
+          {
+            m.neighbours.length > 0 && (
+              <ul class="ficha__neighbours small">
+                {m.neighbours.map((n) => (
+                  <li>
+                    <a href={`/municipio/${n.id}/`}>{n.name}</a>
+                  </li>
+                ))}
+              </ul>
+            )
+          }
+          <p class="small">
+            <a href={`/municipios/${m.uf.toLowerCase()}/`}>Todos os municípios de {m.stateName}</a>
+          </p>
+        </div>
+      </div>
+    </section>
+    </div>
+  </article>
 </Base>
+
+<script>
+  import "../../scripts/chart-tooltip";
+  import "../../scripts/municipality";
+</script>

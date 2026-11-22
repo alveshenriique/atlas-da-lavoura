@@ -1,0 +1,69 @@
+---
+// Municípios: the search over the municipality index and the list of the 27 states, each
+// linking to its page with every municipality grouped by immediate region. The list works
+// without JavaScript, and it is how search engines reach every municipality page.
+import "../../styles/analysis.css";
+import "../../styles/municipality.css";
+
+import MunicipalitySearch from "../../components/MunicipalitySearch.astro";
+import Num from "../../components/Num.astro";
+import UnderConstruction from "../../components/UnderConstruction.astro";
+import Base from "../../layouts/Base.astro";
+import { loadDataFile } from "../../lib/data";
+import { sourced } from "../../lib/sourced";
+import type { MunicipalitiesJson } from "../../types/data/municipalities";
+
+const { states } = loadDataFile<MunicipalitiesJson>("municipalities.json");
+const collator = new Intl.Collator("pt-BR");
+const list = states.state_abbreviation
+  .map((uf, k) => ({ uf, name: states.state_name[k] ?? uf }))
+  .sort((a, b) => collator.compare(a.name, b.name))
+  .map((s) => ({
+    ...s,
+    count: sourced("municipalities.json", "/municipalities/state_abbreviation", "int", "count", s.uf),
+  }));
+const total = sourced("catalog.json", "/municipality_count", "int");
+---
+
+<Base
+  title="Municípios"
+  description="A ficha de cada um dos municípios do Brasil: produção de soja, milho e café, comparação com a região, o estado e o Brasil, e o risco de seca da região."
+>
+  <UnderConstruction>
+    <p>
+      As fichas dos municípios estão em revisão. A produção de cada município também pode ser vista
+      no mapa do <a href="/explorar/">Explorar</a>.
+    </p>
+  </UnderConstruction>
+  <div class="container ficha">
+    <h1 class="ficha__title">Municípios</h1>
+    <p class="ficha__text">
+      Uma ficha para cada um dos <Num n={total} /> municípios: o que ele produz de soja, milho e café,
+      como se compara com a região imediata, o estado e o Brasil, e o risco de seca da região.
+    </p>
+  </div>
+  <section class="band search-band" aria-labelledby="busca-titulo">
+    <div class="container search-band__row">
+      <div class="search-band__intro">
+        <h2 id="busca-titulo">Procurar um município</h2>
+        <p class="small">Digite o nome e escolha na lista; a ficha abre em seguida.</p>
+      </div>
+      <MunicipalitySearch />
+    </div>
+  </section>
+  <section class="container ficha__section" aria-labelledby="por-uf">
+    <h2 id="por-uf" class="ficha__h2">Por estado</h2>
+    <ul class="states-list">
+      {
+        list.map((s) => (
+          <li>
+            <a href={`/municipios/${s.uf.toLowerCase()}/`}>{s.name}</a>{" "}
+            <span class="small states-list__count">
+              <Num n={s.count} /> {s.count.value === 1 ? "município" : "municípios"}
+            </span>
+          </li>
+        ))
+      }
+    </ul>
+  </section>
+</Base>

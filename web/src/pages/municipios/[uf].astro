@@ -1,0 +1,74 @@
+---
+// One page per state, at /municipios/<uf>/: every municipality of the state, grouped by
+// immediate region, each a link to its page. No JavaScript needed.
+import "../../styles/municipality.css";
+
+import Num from "../../components/Num.astro";
+import UnderConstruction from "../../components/UnderConstruction.astro";
+import Base from "../../layouts/Base.astro";
+import { loadDataFile } from "../../lib/data";
+import { sourced } from "../../lib/sourced";
+import type { MunicipalitiesJson } from "../../types/data/municipalities";
+
+export function getStaticPaths() {
+  const { states } = loadDataFile<MunicipalitiesJson>("municipalities.json");
+  return states.state_abbreviation.map((uf, k) => ({
+    params: { uf: uf.toLowerCase() },
+    props: { uf, name: states.state_name[k] ?? uf },
+  }));
+}
+
+interface Props {
+  uf: string;
+  name: string;
+}
+
+const { uf, name } = Astro.props;
+const { municipalities, immediate_regions: regions } = loadDataFile<MunicipalitiesJson>("municipalities.json");
+const collator = new Intl.Collator("pt-BR");
+const groups = regions.immediate_region_id
+  .map((id, k) => ({ id, name: regions.immediate_region_name[k] ?? "" }))
+  .filter((r) => municipalities.immediate_region_id.some((rid, k) => rid === r.id && municipalities.state_abbreviation[k] === uf))
+  .sort((a, b) => collator.compare(a.name, b.name))
+  .map((r) => ({
+    ...r,
+    members: municipalities.municipality_id
+      .flatMap((id, k) =>
+        municipalities.immediate_region_id[k] === r.id ? [{ id, name: municipalities.municipality_name[k] ?? "" }] : [],
+      )
+      .sort((a, b) => collator.compare(a.name, b.name)),
+  }));
+const count = sourced("municipalities.json", "/municipalities/state_abbreviation", "int", "count", uf);
+---
+
+<Base
+  title={`Municípios de ${name}`}
+  description={`Os municípios de ${name}, por região imediata, com a ficha de cada um: produção de soja, milho e café, comparação e risco de seca da região.`}
+>
+  <UnderConstruction>
+    <p>As fichas dos municípios estão em revisão.</p>
+  </UnderConstruction>
+  <div class="container ficha">
+    <p class="kicker"><a href="/municipios/">Municípios</a> · {uf}</p>
+    <h1 class="ficha__title">{name}</h1>
+    <p class="ficha__text">
+      <Num n={count} /> {count.value === 1 ? "município, numa região imediata do IBGE." : "municípios, agrupados pelas regiões imediatas do IBGE."}
+    </p>
+    {
+      groups.map((g) => (
+        <section class="ficha__section region-list" aria-labelledby={`regiao-${g.id}`}>
+          <h2 id={`regiao-${g.id}`} class="region-list__title">
+            Região imediata de {g.name}
+          </h2>
+          <ul class="ficha__neighbours">
+            {g.members.map((m) => (
+              <li>
+                <a href={`/municipio/${m.id}/`}>{m.name}</a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))
+    }
+  </div>
+</Base>

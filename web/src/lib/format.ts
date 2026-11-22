@@ -8,6 +8,7 @@
 // "10 de novembro de 2026" (and "1º de março de 2026").
 export type FormatName =
   | "int"
+  | "absint"
   | "year"
   | "pct"
   | "spct"
@@ -106,6 +107,9 @@ export function format(value: unknown, name: FormatName): string {
       const r = rounded(n, 0);
       return withSign(integer.format(Math.abs(r)), r, false);
     }
+    case "absint":
+      // A count written in words around it ("4 dias a menos"): the size, without the sign.
+      return integer.format(Math.abs(rounded(n, 0)));
     case "year":
       return String(Math.trunc(n));
     case "pct":

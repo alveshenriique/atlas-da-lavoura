@@ -1,0 +1,273 @@
+---
+// The drought risk of the immediate region for one crop (soybean, or arabica coffee in Minas
+// Gerais): never the municipality's (rule 2 of the data contract). It compares, as the main
+// finding does, the mean yield anomaly of the drought harvests with the others' and counts
+// the drought harvests below the trend, all from the region's climate block; then it says
+// whether the association shows in the region's data (lib/drought.ts), and clearly when it
+// does not. The figure is the region's anomaly by harvest, drought harvests in the dry
+// colour, the same chart as the Análise.
+import { scaleLinear } from "d3-scale";
+
+import type { ClimateBlock } from "../../lib/municipality";
+import { tick } from "../../lib/sourced";
+import { sourced } from "../../lib/sourced";
+import AnomalyBars, { type TickLabel } from "../charts/AnomalyBars";
+import Num from "../Num.astro";
+import Structural from "../Structural.astro";
+
+interface Props {
+  block: ClimateBlock;
+  regionName: string;
+  figure: number;
+  hasCrop: boolean;
+}
+
+const { block, regionName, figure, hasCrop } = Astro.props;
+const s = block.summary;
+const reading = block.reading?.kind ?? null;
+// "seca na floração e enchimento" → "na floração e enchimento": the window of the crop.
+const window = block.deficitLabel.replace(/^seca\s+/, "");
+// "da soja", "do café arábica".
+const of = `${block.id === "soybean" ? "da" : "do"} ${block.lower}`;
+const heat = sourced("catalog.json", "/parameters/heat_tmax_threshold_c", "int");
+// The result of the whole set (the main finding, soybean only), to read the region against.
+const headline = (field: string, fmt: "pct" | "int") => sourced("analysis.json", `/headline/${field}`, fmt);
+const set =
+  block.id === "soybean"
+    ? {
+        hitRate: headline("below_trend_share_water_deficit_years", "pct"),
+        baseRate: headline("below_trend_share_all_years", "pct"),
+        deficits: headline("water_deficit_state_years", "int"),
+        all: headline("state_years", "int"),
+        positive: headline("regions_with_positive_correlation", "int"),
+        regions: headline("regions_with_correlation", "int"),
+      }
+    : null;
+const table = `${block.file}#/climate/${block.id}/years`;
+const asTick = (value: number, kind: "within" | "member"): TickLabel => {
+  const t =
+    kind === "within"
+      ? tick(block.file, `/climate/${block.id}/years/yield_anomaly`, "spct", "within", value)
+      : tick(block.file, `/climate/${block.id}/years/harvest_year`, "year", "member", value);
+  return { value, text: t.text, src: t.src, carried: t.carried };
+};
+const years = block.years;
+const barYears = new Set(block.bars.map((bar) => bar.year));
+// Ticks only within the plotted anomalies (the provenance checks it); the zero line is drawn
+// anyway when no tick is zero.
+const anomalies = block.bars.map((bar) => bar.anomaly);
+const [low, high] = [Math.min(...anomalies), Math.max(...anomalies)];
+const yTicks = scaleLinear()
+  .domain(block.extent)
+  .ticks(4)
+  .filter((v) => v >= low && v <= high)
+  .map((v) => asTick(v, "within"));
+const xTicks = years
+  ? scaleLinear()
+      .domain(years)
+      .ticks(6)
+      .filter((v) => Number.isInteger(v) && barYears.has(v))
+      .map((v) => asTick(v, "member"))
+  : [];
+const figureId = `figura-${figure}`;
+// The anomaly of hot days, rounded as printed: written in words ("4 dias a menos que o
+// normal"), never as a negative count.
+const hotDays = block.last?.hot ? Math.round(Number(block.last.hot.value)) : 0;
+const correlation = block.reading?.correlation ?? "none";
+---
+
+<div class="drought" data-crop={block.id} data-status={block.status} data-reading={reading ?? ""}>
+  <h3 class="drought__title">{block.lower === "soja" ? "Soja" : "Café arábica"}</h3>
+  {
+    block.status === "none" && (
+      <p class="drought__text">
+        {hasCrop
+          ? `A região de ${regionName} não tem análise de clima ${of}: a análise só cobre as UFs com calendário de plantio da Conab e os municípios produtores com dado de clima.`
+          : `A região de ${regionName} não produz ${block.lower} com regularidade, por isso não tem análise de clima ${of}.`}
+      </p>
+    )
+  }
+  {
+    block.status === "short" && (
+      <p class="drought__text">
+        A região de {regionName} tem análise de clima {of}, mas a série de rendimento é
+        curta demais para comparar com a tendência: não dá para dizer se os anos de seca coincidem
+        com quedas.
+      </p>
+    )
+  }
+  {
+    s && (
+      <>
+        <p class="drought__text">
+          De <Num n={s.first!} /> a <Num n={s.last!} />, <Num n={s.deficits!} /> das <Num n={s.years!} /> safras da
+          região tiveram seca {window}.
+          {s.meanDeficit && s.meanOther && (
+            <>
+              {" "}Nelas, o rendimento ficou em média <Num n={s.meanDeficit} class="drought__dry" /> em relação à
+              tendência, contra <Num n={s.meanOther} /> nas demais;{" "}
+              <Num n={s.hits!} /> das <Num n={s.deficits!} /> ficaram abaixo da tendência
+              {s.baseRate && (
+                <>
+                  {" "}(<Num n={s.hitRate!} />), contra <Num n={s.baseRate} /> de todas as safras
+                </>
+              )}
+              .
+            </>
+          )}
+        </p>
+        <p class="drought__reading" data-reading-text>
+          {reading === "shows" && (
+            <>
+              Na região, as safras com seca seguem o padrão do conjunto: renderam menos que as demais, e a
+              série da própria região confirma a diferença.
+            </>
+          )}
+          {reading === "unconfirmed" && (
+            <>
+              As safras com seca da região vão na direção do conjunto, mas a série da região é curta para
+              confirmar a diferença sozinha.
+            </>
+          )}
+          {reading === "not-here" && (
+            <>
+              Nesta região, as safras com seca não seguem o padrão do conjunto. Isso não descarta o risco de
+              seca: <Num n={s.deficits!} /> das <Num n={s.years!} /> safras da região tiveram seca.
+            </>
+          )}
+          {reading === "few" && <>Poucas safras com seca na região para comparar com as demais.</>}
+        </p>
+        {s.corr && (
+          <p class="drought__corr small" data-correlation={correlation}>
+            {correlation === "flat-while-comparison-holds" && (
+              <>
+                A comparação das safras com seca segue o padrão do conjunto, mas a correlação entre o balanço
+                hídrico e o rendimento ao longo de todas as safras é negativa ou praticamente nula (
+                <Num n={s.corr} />
+                ).
+              </>
+            )}
+            {correlation === "positive-while-comparison-fails" && (
+              <>
+                As safras com seca não seguem o padrão do conjunto, mas a correlação entre o balanço hídrico e
+                o rendimento ao longo de todas as safras é positiva (<Num n={s.corr} />
+                ).
+              </>
+            )}
+            {correlation === "agrees" && (
+              <>
+                A correlação entre o balanço hídrico e o rendimento ao longo de todas as safras{" "}
+                {reading === "not-here" ? "também é negativa ou praticamente nula" : "também é positiva"} (
+                <Num n={s.corr} />
+                ).
+              </>
+            )}
+            {correlation === "none" && (
+              <>
+                A correlação entre o balanço hídrico e o rendimento ao longo de todas as safras é{" "}
+                <Num n={s.corr} />.
+              </>
+            )}
+          </p>
+        )}
+      </>
+    )
+  }
+  {
+    (block.status === "short" || (reading !== null && reading !== "shows")) && (
+      <p class="drought__set small" data-set-reference>
+        {set ? (
+          <>
+            No conjunto, <Num n={set.hitRate} /> das <Num n={set.deficits} /> safras estaduais com seca ficaram
+            abaixo da tendência, contra <Num n={set.baseRate} /> de todas as <Num n={set.all} />, e{" "}
+            <Num n={set.positive} /> das <Num n={set.regions} /> regiões imediatas têm correlação positiva entre o
+            balanço hídrico e o rendimento. <a href="/#achado">Ver a análise</a>.
+          </>
+        ) : (
+          <>
+            O resultado do conjunto do Atlas é o da soja. Para o café arábica, a série começa em{" "}
+            <Num n={sourced("catalog.json", "/parameters/coffee_breakdown_first_year", "year")} /> e ainda
+            é curta para um resultado de conjunto.
+          </>
+        )}
+      </p>
+    )
+  }
+  {
+    block.last && (
+      <p class="drought__last small">
+        <span class="kicker">
+          Safra <Num n={block.last.year!} /> · região de {regionName}
+        </span>
+        <br />
+        {block.lastDeficit ? `Foi um ano de seca ${window}.` : `Não foi um ano de seca ${window}.`}
+        {block.last.rain && (
+          <>
+            {" "}Chuva <Num n={block.last.rain} />% da normal.
+          </>
+        )}
+        {block.last.balance && (
+          <>
+            {" "}Balanço hídrico <Num n={block.last.balance} /> desvio-padrão em relação à normal.
+          </>
+        )}
+        {block.last.hot && (
+          <>
+            {" "}
+            {hotDays === 0 ? (
+              <>
+                Dias acima de <Num n={heat} /> °C: o mesmo número que o normal.
+              </>
+            ) : (
+              <>
+                <Num n={block.last.hot} /> {Math.abs(hotDays) === 1 ? "dia" : "dias"} acima de <Num n={heat} /> °C{" "}
+                {hotDays > 0 ? "a mais" : "a menos"} que o normal.
+              </>
+            )}
+          </>
+        )}
+      </p>
+    )
+  }
+  {
+    years && block.bars.length > 0 && (
+      <figure id={figureId} class="drought__figure" aria-labelledby={`${figureId}-titulo`}>
+        <div class="figure__head">
+          <h4 id={`${figureId}-titulo`} class="figure__title">
+            <Structural kind="figure" n={figure} />. Rendimento {of} na região de {regionName} em
+            relação à tendência
+          </h4>
+          <ul class="legend small" aria-label="Legenda">
+            <li>
+              <span class="legend__swatch legend__swatch--deficit" aria-hidden="true" />
+              {block.deficitLabel}
+            </li>
+            <li>
+              <span class="legend__swatch legend__swatch--other" aria-hidden="true" />
+              demais anos
+            </li>
+            {block.missingYears.length > 0 && (
+              <li>
+                <span class="legend__swatch legend__swatch--missing" aria-hidden="true" />
+                sem dado
+              </li>
+            )}
+          </ul>
+        </div>
+        <AnomalyBars
+          label={`Região de ${regionName}: rendimento ${of} em relação à tendência, por safra. Use as setas para percorrer os anos.`}
+          bars={block.bars}
+          missingYears={block.missingYears}
+          years={years}
+          extent={block.extent}
+          deficitLabel={block.deficitLabel}
+          table={table}
+          cols="harvest_year|year,yield_anomaly|spct"
+          variant="focus"
+          yTicks={yTicks}
+          xTicks={xTicks}
+        />
+      </figure>
+    )
+  }
+</div>

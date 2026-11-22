@@ -49,7 +49,7 @@ describe("territories of the side panel", () => {
     expect(rows.map((r) => r.abbr)).toEqual(["MT", "PR", "AM", "AC", "AP"]);
     expect(rows.map((r) => r.kind)).toEqual(["value", "value", "value", "zero", "nodata"]);
     expect(rows[0]?.shareSrc).toBe("places/state/MT.json#/series/soybean/production_t/1!share|pct");
-    const country = { series: { soybean: { production_t: [60_000_100, 72_000_300] } } };
+    const country = { series: { soybean: { years: [2024, 2025], production_t: [60_000_100, 72_000_300] } } };
     const ref = rows[0]?.shareSrc ?? "";
     const [file, rest = ""] = ref.split("#");
     const [pointer = "", tail = ""] = rest.split("!");

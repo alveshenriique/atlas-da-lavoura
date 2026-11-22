@@ -1,0 +1,99 @@
+---
+// The yield of a crop over the years: the municipality, its immediate region, the state and
+// Brazil, one thin line each, labelled at its end instead of a legend (after the approved
+// draft). Drawn at build time: the SVG stretches to any width (non-scaling strokes) and the
+// labels are HTML placed in percentages, so the text keeps its size. The labels and the
+// first and last years cite their place in the data package; a year without a comparable
+// yield (no data, no harvest, too small a harvested area) leaves a gap in the line.
+import type { Line, SeriesFigure } from "../../lib/municipality";
+import Num from "../Num.astro";
+
+interface Props {
+  figure: SeriesFigure;
+}
+
+const { figure } = Astro.props;
+const W = 1000;
+const H = 300;
+const PAD_TOP = 14;
+const PAD_BOTTOM = 6;
+const all = figure.lines.flatMap((line) => line.values.filter((v): v is number => v !== null));
+const top = Math.max(...all, 1) * 1.05;
+const n = figure.years.length;
+const x = (j: number) => (n <= 1 ? W / 2 : (j / (n - 1)) * W);
+const y = (v: number) => PAD_TOP + (1 - v / top) * (H - PAD_TOP - PAD_BOTTOM);
+
+function path(values: (number | null)[]): string {
+  let d = "";
+  let pen = false;
+  values.forEach((v, j) => {
+    if (v === null) {
+      pen = false;
+      return;
+    }
+    d += `${pen ? "L" : "M"}${x(j).toFixed(1)} ${y(v).toFixed(1)}`;
+    pen = true;
+  });
+  return d;
+}
+
+// A single point (a line of one year) is drawn as a dot.
+function dots(values: (number | null)[]): { cx: number; cy: number }[] {
+  return values.flatMap((v, j) =>
+    v !== null && values[j - 1] == null && values[j + 1] == null ? [{ cx: x(j), cy: y(v) }] : [],
+  );
+}
+
+// End labels, from top to bottom, kept at least 11% of the height apart.
+const GAP = 11;
+const labelled = figure.lines
+  .filter((line): line is Line & { end: NonNullable<Line["end"]> } => line.end !== null)
+  .map((line) => ({ line, top: (y(Number(line.end.n.value)) / H) * 100 }))
+  .sort((a, b) => a.top - b.top);
+for (let k = 1; k < labelled.length; k++) {
+  const prev = labelled[k - 1];
+  const cur = labelled[k];
+  if (prev && cur && cur.top - prev.top < GAP) cur.top = prev.top + GAP;
+}
+const shift = Math.max(0, (labelled[labelled.length - 1]?.top ?? 0) - 96);
+for (const item of labelled) item.top -= shift;
+const lastYearText = String(figure.years[figure.years.length - 1] ?? "");
+---
+
+<div class="yield-lines">
+  <div class="yield-lines__plot">
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true">
+      <line class="yield-lines__base" x1="0" x2={W} y1={y(0)} y2={y(0)} vector-effect="non-scaling-stroke"></line>
+      {
+        [...figure.lines].reverse().map((line) => (
+          <g class={`yield-lines__line yield-lines__line--${line.key}`}>
+            <path d={path(line.values)} vector-effect="non-scaling-stroke" />
+            {dots(line.values).map((dot) => (
+              <circle cx={dot.cx} cy={dot.cy} r="4" vector-effect="non-scaling-stroke" />
+            ))}
+          </g>
+        ))
+      }
+    </svg>
+    <div class="yield-lines__x meta">
+      <Num n={figure.firstYear} />
+      <Num n={figure.lastYear} />
+    </div>
+  </div>
+  <ul class="yield-lines__labels small" aria-label="Rendimento na última safra com dado, em kg/ha">
+    {
+      labelled.map(({ line, top }) => (
+        <li class={`yield-lines__label yield-lines__label--${line.key}`} style={`top:${top.toFixed(2)}%`}>
+          <span class="yield-lines__name">{line.label}</span>{" "}
+          <Num n={line.end.n} />
+          {line.end.year.text !== lastYearText && (
+            <span class="yield-lines__when">
+              {" "}
+              (em <Num n={line.end.year} />)
+            </span>
+          )}
+        </li>
+      ))
+    }
+  </ul>
+</div>

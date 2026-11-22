@@ -6,7 +6,8 @@
         "http://localhost/",
         "http://localhost/explorar/",
         "http://localhost/municipios/",
-        "http://localhost/metodo/"
+        "http://localhost/metodo/",
+        "http://localhost/municipio/3155504/"
       ],
       "numberOfRuns": 3,
       "settings": { "preset": "desktop" }
@@ -47,6 +48,15 @@
             "categories:performance": ["error", { "minScore": 0.9 }],
             "resource-summary:script:size": ["error", { "maxNumericValue": 30720 }],
             "resource-summary:total:size": ["error", { "maxNumericValue": 122880 }]
+          }
+        },
+        {
+          "matchingUrlPattern": ".*/municipio/\\d+/$",
+          "aggregationMethod": "median",
+          "assertions": {
+            "categories:performance": ["error", { "minScore": 0.9 }],
+            "resource-summary:script:size": ["error", { "maxNumericValue": 133120 }],
+            "resource-summary:total:size": ["error", { "maxNumericValue": 327680 }]
           }
         }
       ]

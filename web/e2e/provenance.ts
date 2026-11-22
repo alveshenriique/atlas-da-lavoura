@@ -9,6 +9,7 @@
 import type { APIRequestContext, Page } from "@playwright/test";
 
 import {
+  columnRef,
   numberTokens,
   parseRefs,
   type Ref,
@@ -38,6 +39,7 @@ interface Item {
   table: string | null;
   cols: string | null;
   row: string | null;
+  column: number | null; // the cell's column, in a table with data-src-columns
   mark: number | null; // index of the structural mark holding this text, if any
 }
 
@@ -65,11 +67,23 @@ async function collect(page: Page): Promise<Collected> {
       const classes = el.getAttribute("class")?.trim().split(/\s+/).join(".");
       return `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ""}${classes ? `.${classes}` : ""}`;
     };
-    const none = { src: null, carried: null, table: null, cols: null, row: null };
+    const none = { src: null, carried: null, table: null, cols: null, row: null, column: null };
     const provenance = (start: Element) => {
       for (let el: Element | null = start; el; el = el.parentElement) {
         if (el.hasAttribute("data-src")) {
           return { ...none, src: el.getAttribute("data-src"), carried: el.getAttribute("data-value") };
+        }
+        // A cell of a table with one reference template per column.
+        if (el instanceof HTMLTableCellElement && el.closest("table")?.hasAttribute("data-src-columns")) {
+          const row = el.closest("tr")?.getAttribute("data-row");
+          if (row !== null && row !== undefined) {
+            return {
+              ...none,
+              table: el.closest("table")?.getAttribute("data-src-columns") ?? null,
+              row,
+              column: el.cellIndex,
+            };
+          }
         }
         if (el.hasAttribute("data-row")) {
           const holder = el.closest("[data-src-table]");
@@ -196,7 +210,14 @@ export async function findUnsourcedNumbers(
     if (item.mark !== null && structural.valid[item.mark]) continue;
     let refs: Ref[];
     if (item.src !== null) refs = parseRefs(item.src);
-    else if (item.row !== null && item.table !== null && item.cols !== null) {
+    else if (item.column !== null && item.row !== null && item.table !== null) {
+      try {
+        refs = [columnRef(item.table, item.column, item.row)];
+      } catch (error) {
+        issues.push({ text: item.text, where: item.where, problem: String(error) });
+        continue;
+      }
+    } else if (item.row !== null && item.table !== null && item.cols !== null) {
       refs = rowRefs(item.table, item.cols, Number(item.row));
     } else {
       issues.push({ text: item.text, where: item.where, problem: "number without provenance" });
