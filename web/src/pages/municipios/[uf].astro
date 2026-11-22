@@ -4,7 +4,6 @@
 import "../../styles/municipality.css";
 
 import Num from "../../components/Num.astro";
-import UnderConstruction from "../../components/UnderConstruction.astro";
 import Base from "../../layouts/Base.astro";
 import { loadDataFile } from "../../lib/data";
 import { sourced } from "../../lib/sourced";
@@ -45,9 +44,6 @@ const count = sourced("municipalities.json", "/municipalities/state_abbreviation
   title={`Municípios de ${name}`}
   description={`Os municípios de ${name}, por região imediata, com a ficha de cada um: produção de soja, milho e café, comparação e risco de seca da região.`}
 >
-  <UnderConstruction>
-    <p>As fichas dos municípios estão em revisão.</p>
-  </UnderConstruction>
   <div class="container ficha">
     <p class="kicker"><a href="/municipios/">Municípios</a> · {uf}</p>
     <h1 class="ficha__title">{name}</h1>

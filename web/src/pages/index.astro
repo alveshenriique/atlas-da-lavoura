@@ -101,7 +101,7 @@ const preloads = [
         </p>
         <ul class="intro__actions" aria-label="O que você pode fazer">
           <li><a href="/explorar/">Ver o mapa dos municípios</a></li>
-          <li><a href="/explorar/#foco">Ver o seu estado no mapa</a></li>
+          <li><a href="#busca">Procurar o seu município</a></li>
           <li><a href="#achado">Ler a análise: seca e soja</a></li>
         </ul>
       </div>
@@ -173,13 +173,13 @@ const preloads = [
       </section>
     </div>
 
-    <section class="band search-band" aria-labelledby="busca-titulo">
+    <section id="busca" class="band search-band" aria-labelledby="busca-titulo">
       <div class="container search-band__row">
         <div class="search-band__intro">
           <h2 id="busca-titulo">{bindShortWords("E no seu município?")}</h2>
           <p class="small">
             Produção desde <Num n={pamFirstYear} />, comparação com a região e o estado, ranking e o
-            risco de seca na floração da região. A ficha de cada município está em construção.
+            risco de seca na floração da região.
           </p>
         </div>
         <MunicipalitySearch />

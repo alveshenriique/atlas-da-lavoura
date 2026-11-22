@@ -18,9 +18,9 @@ interface SitePage {
 export const SITE_PAGES: readonly SitePage[] = [
   { path: "/", prefix: false, status: "ready" },
   { path: "/explorar/", prefix: false, status: "ready" },
-  { path: "/municipios/", prefix: false, status: "under-construction" },
-  { path: "/municipios/", prefix: true, status: "under-construction" },
-  { path: "/municipio/", prefix: true, status: "under-construction" },
+  { path: "/municipios/", prefix: false, status: "ready" },
+  { path: "/municipios/", prefix: true, status: "ready" },
+  { path: "/municipio/", prefix: true, status: "ready" },
   { path: "/metodo/", prefix: false, status: "under-construction" },
 ];
 
@@ -31,7 +31,8 @@ export function pageStatus(pathname: string): PageStatus | null {
   return page?.status ?? null;
 }
 
-/** The finished pages, the only ones the sitemap lists. */
+/** The finished pages with a single address; the sitemap also lists every page under a
+ *  finished prefix (pages/sitemap.xml.ts). */
 export const SITEMAP_PATHS = SITE_PAGES.filter((p) => p.status === "ready" && !p.prefix).map((p) => p.path);
 
 /**

@@ -125,9 +125,23 @@ test.describe("404, robots and sitemap", () => {
       `User-agent: *\nAllow: /\n\nSitemap: ${SITE}/sitemap.xml\n`,
     );
     const sitemap = await (await request.get("/sitemap.xml")).text();
-    const listed = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
-    expect(listed).toEqual(SITEMAP_PATHS.map((path) => `${SITE}${path}`));
-    expect(SITEMAP_PATHS).toEqual(["/", "/explorar/"]);
+    const listed = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1] ?? "");
+    // The finished pages with a single address, then the 27 state lists and every
+    // municipality page of the index; the Método, still under construction, stays out.
+    expect(SITEMAP_PATHS).toEqual(["/", "/explorar/", "/municipios/"]);
+    const base = await (await request.get("/")).text().then((html) => /data-data-base="([^"]+)"/.exec(html)?.[1] ?? "");
+    const index = (await (await request.get(`${base}municipalities.json`)).json()) as {
+      municipalities: { municipality_id: number[] };
+      states: { state_abbreviation: string[] };
+    };
+    const expected = [
+      ...SITEMAP_PATHS,
+      ...index.states.state_abbreviation.map((uf) => `/municipios/${uf.toLowerCase()}/`),
+      ...index.municipalities.municipality_id.map((id) => `/municipio/${id}/`),
+    ].map((path) => `${SITE}${path}`);
+    expect(listed).toEqual(expected);
+    expect(new Set(listed).size).toBe(listed.length);
+    expect(listed).not.toContain(`${SITE}/metodo/`);
   });
 
   test("pages under construction say so, carry noindex and keep their canonical", async ({ page }) => {
