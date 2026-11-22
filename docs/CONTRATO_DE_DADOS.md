@@ -62,6 +62,8 @@ Todo arquivo começa com um bloco `meta`:
 1. **Agregados territoriais só dos arquivos.** O site nunca calcula agregados territoriais por conta própria além dos níveis que os arquivos trazem: Brasil, macrorregião, UF e região imediata. O único cálculo permitido no navegador é a razão produção ÷ área para o rendimento, sempre como soma ÷ soma:
    - num território, é `production_t ÷ harvested_area_ha × 1000` do próprio arquivo;
    - nunca é a média dos rendimentos dos municípios.
+
+   A participação de um município ou de uma UF num território é o seu valor dividido pelo total publicado desse território, da mesma série e do mesmo ano, no arquivo do território (operação `share` da procedência). Nunca soma culturas nem anos.
 2. **Associação nunca por município.** Associação entre clima e rendimento só por região imediata e UF. Na página de um município, o risco de seca é o da sua região imediata (`places/region/<id>.json`, bloco `climate`), apresentado como da região.
 3. **Café:**
    - nenhuma linha, comparação, variação ou animação junta `coffee_in_husk` e `coffee_processed`; o seletor de ano de uma série vai do `first_year` ao `last_year` dela;
@@ -75,7 +77,7 @@ Todo arquivo começa com um bloco `meta`:
 7. **Associação, não causalidade.** Os textos falam em anos que coincidem com quedas, nunca em quedas causadas pela seca.
 8. **Atribuição.** O texto de citação de cada fonte (`attribution_pt`, em `catalog.sources`) aparece completo na página Método, numa lista com todas as fontes no mesmo formato. O rodapé de todas as páginas e as figuras citam as fontes na forma curta, por exemplo "BR-DWGD (Xavier et al., 2022)", com o ano lido da própria citação, e apontam para essa lista.
 9. **Números de dado só dos arquivos; números estruturais marcados.** O site distingue dois tipos de número:
-   - **De dado:** todo valor que descreve os dados, inclusive no meio do texto, nos eixos e nos nomes acessíveis. Vem de um arquivo deste pacote e cita a sua origem na marcação (`data-src` com `arquivo#/ponteiro|formato`, ou a linha de uma tabela colunar).
+   - **De dado:** todo valor que descreve os dados, inclusive no meio do texto, nos eixos e nos nomes acessíveis. Vem de um arquivo deste pacote e cita a sua origem na marcação (`data-src` com `arquivo#/ponteiro|formato`, a linha de uma tabela colunar ou, numa tabela cujas colunas vêm de arquivos diferentes, o modelo da sua coluna em `data-src-columns`, com `{row}` no lugar da linha).
    - **Estrutural:** a numeração editorial de figuras, tabelas e notas e os marcadores das listas numeradas. Não vem dos dados e é marcada explicitamente com `data-structural`. Uma marca de figura, tabela ou nota contém só o texto "Figura N", "Tabela N" ou "Nota N", em que N é a sua posição na página entre as marcas do mesmo tipo, e não cita dados. Uma lista numerada é um `<ol data-structural="list">` que conta a partir de 1, sem `start` nem `reversed`; um item só pode ter `value` igual à sua própria posição (1, 2, 3…), o que uma lista reordenada no lugar precisa, porque o navegador nem sempre renumera os itens que mudam de posição.
 
    O teste de ponta a ponta do site relê os arquivos citados e falha se algum número de dado não tiver origem ou divergir dela. Também falha se uma marca estrutural fugir dessas regras, se uma lista numerada não estiver marcada ou se houver número em conteúdo gerado por CSS. Assim, um número de dado não passa disfarçado de estrutural (`web/src/lib/provenance.ts`, `web/src/lib/structural.ts`, `web/e2e/provenance.ts`).
@@ -87,17 +89,17 @@ Os tamanhos com gzip abaixo são os da versão 2026.11.08, com os dados completo
 | Caminho | Esquema | Página | Quando carrega | gzip |
 |---|---|---|---|---|
 | `catalog.json` | catalog | todas | na abertura | 2 KiB |
-| `municipalities.json` | municipalities | Município; Explorar (nomes e primeiro ano) | na abertura; no Explorar, na primeira interação com o mapa ou a tabela, ou num ano anterior ao último primeiro ano (os municípios criados depois aparecem como ainda não existentes) | 61 KiB |
+| `municipalities.json` | municipalities | Município (no build); busca da Análise e de Municípios; Explorar (nomes e primeiro ano) | na ficha, só no build; na busca, no primeiro foco do campo; no Explorar, na primeira interação com o mapa ou a tabela, ou num ano anterior ao último primeiro ano (os municípios criados depois aparecem como ainda não existentes) | 61 KiB |
 | `analysis.json` | analysis | Análise; Explorar (decomposição, no build) | na abertura; no Explorar, só no build | 33 KiB |
 | `method.json` | method | Método | na abertura | 8 KiB |
 | `explore/<série>/<medida>.json` (24) | explore | Explorar | a soja na abertura; as demais ao trocar o filtro | 10 a 434 KiB (soja 189, milho 434) |
-| `places/country.json` | place | Explorar, Município | na abertura | 4 KiB |
+| `places/country.json` | place | Explorar, Município | no Explorar, na abertura; na ficha do município, só no build | 4 KiB |
 | `places/macro_region/<id>.json` (5) | place | — | sob demanda | 4 KiB |
-| `places/state/<UF>.json` (27) | place | Município; Explorar (painel) | ao escolher o município; no Explorar, ao pôr a UF em foco, e os 27 quando o ranking de uma visão que não a padrão está na tela (o da visão padrão vem no HTML) | 3 a 5 KiB |
-| `places/region/<id>.json` (510) | place | Município | ao escolher o município | mediana 10 KiB, máximo 52 KiB |
+| `places/state/<UF>.json` (27) | place | Município; Explorar (painel) | na ficha do município, só no build; no Explorar, ao pôr a UF em foco, e os 27 quando o ranking de uma visão que não a padrão está na tela (o da visão padrão vem no HTML) | 3 a 5 KiB |
+| `places/region/<id>.json` (510) | place | Município | só no build: a ficha vem pronta no HTML, e o navegador não baixa o arquivo (o link "Dados" da ficha aponta para ele) | mediana 10 KiB, máximo 52 KiB |
 | `geo/municipalities.topo.json` | topology | Explorar | na abertura | 290 KiB |
-| `geo/states.topo.json` | topology | Análise; Explorar (contorno inicial) | ao chegar à seção da fronteira; no Explorar, no build (o contorno vai no HTML) | 13 KiB |
-| `geo/state/<UF>.topo.json` (27) | topology | Explorar (zoom), Município (minimapa) | sob demanda | 1 a 151 KiB |
+| `geo/states.topo.json` | topology | Análise; Explorar (contorno inicial); Município (contorno da UF no minimapa) | ao chegar à seção da fronteira; no Explorar e no Município, no build (o desenho vai no HTML) | 13 KiB |
+| `geo/state/<UF>.topo.json` (27) | topology | Explorar (zoom), Município (minimapa) | no Explorar, sob demanda; no Município, só no build (o minimapa vai no HTML, em SVG) | 1 a 151 KiB |
 | `manifest.json` | manifest | — (auditoria e release) | — | — |
 
 **`catalog.json`.** O ponto de entrada. Traz:
