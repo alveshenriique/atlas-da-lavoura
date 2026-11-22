@@ -88,8 +88,8 @@ describe("number tokens", () => {
 });
 
 describe("territory operations", () => {
-  const country = { series: { soybean: { production_t: [100, 200], harvested_area_ha: [50, 80] } } };
-  const state = { series: { soybean: { production_t: [30, 50], harvested_area_ha: [10, 0] } } };
+  const country = { series: { soybean: { years: [2024, 2025], production_t: [100, 200], harvested_area_ha: [50, 80] } } };
+  const state = { series: { soybean: { years: [2024, 2025], production_t: [30, 50], harvested_area_ha: [10, 0] } } };
 
   it("share a state's value of Brazil's at the same place", () => {
     const ref = parseRef("places/state/MT.json#/series/soybean/production_t/1!share|pct");
@@ -127,5 +127,56 @@ describe("the change between the ends of a period", () => {
     expect(resolveRef(parseRef("analysis.json#/block/start_area_ha/0!change|spct"), doc)).toBeCloseTo(-0.2);
     expect(renderRef(parseRef("analysis.json#/block/start_area_ha/1!change|spct"), doc)).toBe("+200%");
     expect(() => resolveRef(parseRef("analysis.json#/block/end_area_ha/0!change|spct"), doc)).toThrow(/start_/);
+  });
+});
+
+// A municipality's share of a territory divides by the total of the same series and the same
+// year, published in the territory's file; it never adds series (data contract, rule 1).
+describe("the share of a municipality", () => {
+  const region = {
+    series: { soybean: { years: [2024, 2025], production_t: [800, 1000] }, corn: { years: [2024, 2025], production_t: [50, 4000] } },
+    municipalities: [
+      { series: { soybean: { years: [2024, 2025], production_t: [200, 250] }, corn: { years: [2024, 2025], production_t: [0, 40] } } },
+    ],
+  };
+  const state = { series: { soybean: { years: [2024, 2025], production_t: [4000, 5000] } } };
+  const shifted = { series: { soybean: { years: [2023, 2024], production_t: [4000, 5000] } } };
+
+  it("divides by the region's total in the same file, of the same series and year", () => {
+    const ref = parseRef("places/region/510008.json#/municipalities/0/series/soybean/production_t/1!share:region|pct");
+    expect(siblingFile(ref)).toBeNull();
+    expect(resolveRef(ref, region)).toBeCloseTo(0.25);
+    const corn = parseRef("places/region/510008.json#/municipalities/0/series/corn/production_t/1!share:region|pct");
+    expect(resolveRef(corn, region)).toBeCloseTo(0.01);
+  });
+
+  it("divides by a state's or Brazil's total, read from their files", () => {
+    const ref = parseRef("places/region/510008.json#/municipalities/0/series/soybean/production_t/1!share:state-MT|pct");
+    expect(siblingFile(ref)).toBe("places/state/MT.json");
+    expect(resolveRef(ref, region, null, state)).toBeCloseTo(0.05);
+    expect(siblingFile(parseRef("places/region/1.json#/series/soybean/production_t/1!share:country|pct"))).toBe(
+      "places/country.json",
+    );
+  });
+
+  it("refuses values of different years and pointers outside a series", () => {
+    const ref = parseRef("places/region/510008.json#/municipalities/0/series/soybean/production_t/1!share:state-MT|pct");
+    expect(() => resolveRef(ref, region, null, shifted)).toThrow(/different years/);
+    const outside = parseRef("places/region/510008.json#/municipalities/0/series/soybean!share:region|pct");
+    expect(() => resolveRef(outside, region)).toThrow(/value of a series/);
+    expect(() => siblingFile(parseRef("places/region/1.json#/series/soybean/production_t/1!share:city|pct"))).toThrow(
+      /unknown territory/,
+    );
+  });
+});
+
+describe("the drought harvests below the trend", () => {
+  it("are the hit rate times the drought harvests of the same summary", () => {
+    const doc = { climate: { soybean: { summary: { water_deficit_years: 6, water_deficit_hit_rate: 0.6667 } } } };
+    const ref = parseRef("places/region/510008.json#/climate/soybean/summary/water_deficit_hit_rate!hits|int");
+    expect(resolveRef(ref, doc)).toBe(4);
+    expect(() => resolveRef(parseRef("x.json#/climate/soybean/summary/water_deficit_years!hits|int"), doc)).toThrow(
+      /hit_rate/,
+    );
   });
 });

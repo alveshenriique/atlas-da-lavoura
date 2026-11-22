@@ -24,6 +24,12 @@ describe("format", () => {
     expect(format(-53, "int")).toBe(`${MINUS}53`);
   });
 
+  it("writes a count without its sign when the words around it carry the sense", () => {
+    expect(format(-4, "absint")).toBe("4");
+    expect(format(29.1, "absint")).toBe("29");
+    expect(format(-1234.4, "absint")).toBe("1.234");
+  });
+
   it("keeps years plain and decimals with a comma", () => {
     expect(format(2025, "year")).toBe("2025");
     expect(format(0.752, "dec2")).toBe("0,75");

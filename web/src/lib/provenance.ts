@@ -20,12 +20,20 @@
 // matrix has a value (where a measure starts later than its series). `change` is the
 // relative change from a start value to the end value at the same place (a pointer to
 // `.../start_<field>/<i>` reads `.../end_<field>/<i>`): end / start − 1.
-// For the territories of the place files: `share` is a value over Brazil's at the same
-// pointer of places/country.json, and `areayield` the yield of a territory, its production
-// over the harvested area at the same place of the file (sum over sum, never a mean of
-// municipal yields).
+// For the place files: `share[:territory]` is a value over the total of a territory at the
+// same series and year: `country` (places/country.json, the default), `state-<UF>`
+// (places/state/<UF>.json) or `region` (the territory of the same region file, for a
+// municipality of it). A municipal pointer (/municipalities/<i>/series/...) loses its
+// municipality part; the year of both values must be the same, and a share never adds
+// series. `areayield` is the yield of a territory or municipality, its production over the
+// harvested area at the same place of the file (sum over sum, never a mean of municipal
+// yields). `hits` is how many drought harvests of a climate summary fell below the trend:
+// the hit rate times the drought harvests of the same summary.
 // Markup: `data-src` holds the references; rows of a columnar table use `data-row` on the
 // element and `data-src-table` + `data-src-cols` ("col|format,col|format") on an ancestor.
+// A table whose columns come from different files names one reference template per column
+// in `data-src-columns` (separated by spaces, `{row}` standing for the row's data-row): each
+// cell then cites only its own column.
 // This module is shared by the build (Node) and the test runner, so it never touches the
 // file system or the DOM.
 import { classBreaks, type Matrix, pooledPositives, yieldCell, yieldMatrix } from "./classify";
@@ -46,7 +54,8 @@ export type Op =
   | "areayield"
   | "yield"
   | "firstyear"
-  | "change";
+  | "change"
+  | "hits";
 
 export interface Ref {
   file: string;
@@ -71,11 +80,13 @@ const OPS = new Set<string>([
   "yield",
   "firstyear",
   "change",
+  "hits",
 ]);
-const WITH_ARGUMENT = new Set<string>(["count", "circle", "ybreak"]);
+const WITH_ARGUMENT = new Set<string>(["count", "circle", "ybreak", "share"]);
 const NEEDS_ARGUMENT = new Set<string>(["circle", "ybreak"]);
 const FORMATS = new Set<string>([
   "int",
+  "absint",
   "year",
   "pct",
   "spct",
@@ -132,6 +143,18 @@ export function rowRefs(table: string, cols: string, row: number): Ref[] {
   });
 }
 
+/** The reference of one cell of a table with column templates (data-src-columns). */
+const columnTemplates = new Map<string, string[]>();
+
+export function columnRef(templates: string, column: number, row: string): Ref {
+  let split = columnTemplates.get(templates);
+  if (!split) columnTemplates.set(templates, (split = templates.split(/\s+/).filter(Boolean)));
+  const template = split[column];
+  if (template === undefined) throw new Error(`no column template ${column} in ${templates}`);
+  if (!/^\d+$/.test(row)) throw new Error(`a row of a column template must be an index: ${row}`);
+  return parseRef(template.replaceAll("{row}", row));
+}
+
 /** RFC 6901 JSON pointer. */
 export function getPointer(doc: unknown, pointer: string): unknown {
   if (pointer === "") return doc;
@@ -158,9 +181,16 @@ function numbers(node: unknown, ref: Ref): number[] {
 }
 
 /** The other file a reference reads: the harvested-area matrix next to a production one
- *  for the yield operations, the country file for a share. */
+ *  for the yield operations, the territory's file for a share (none for a share of the
+ *  region, whose total is in the same file). */
 export function siblingFile(ref: Ref): string | null {
-  if (ref.op === "share") return "places/country.json";
+  if (ref.op === "share") {
+    if (ref.arg === "region") return null;
+    const state = /^state-([A-Z]{2})$/.exec(ref.arg ?? "");
+    if (state) return `places/state/${state[1]}.json`;
+    if (ref.arg === undefined || ref.arg === "country") return "places/country.json";
+    throw new Error(`unknown territory of a share: ${serializeRef(ref)}`);
+  }
   if (ref.op !== "yield" && ref.op !== "ybreak") return null;
   const slash = ref.file.lastIndexOf("/");
   return `${ref.file.slice(0, slash + 1)}harvested_area_ha.json`;
@@ -233,11 +263,33 @@ export function resolveRef(
       return value;
     }
     case "share": {
-      const total = siblingNode();
+      // The territory's total at the same series and year: the pointer without the
+      // municipality, in the territory's file (the same file for the region).
+      const match = /^(?:\/municipalities\/\d+)?(\/series\/[^/]+(?:\/real_value)?)\/[a-z_]+\/(\d+)$/.exec(ref.pointer);
+      if (!match) throw new Error(`${serializeRef(ref)} must point at a value of a series`);
+      const territoryPointer = ref.pointer.replace(/^\/municipalities\/\d+/, "");
+      const totalDoc = ref.arg === "region" ? doc : sibling;
+      if (totalDoc === undefined) throw new Error(`${serializeRef(ref)} needs ${siblingFile(ref)}`);
+      const yearsOf = (from: unknown, pointer: string) =>
+        getPointer(from, `${pointer.replace(/\/[a-z_]+\/\d+$/, "")}/years/${match[2]}`);
+      if (yearsOf(doc, ref.pointer) !== yearsOf(totalDoc, territoryPointer)) {
+        throw new Error(`${serializeRef(ref)} divides values of different years`);
+      }
+      const total = getPointer(totalDoc, territoryPointer);
       if (typeof node !== "number" || typeof total !== "number" || total === 0) {
         throw new Error(`${serializeRef(ref)} has no share`);
       }
       return node / total;
+    }
+    case "hits": {
+      if (!ref.pointer.endsWith("/water_deficit_hit_rate")) {
+        throw new Error(`${serializeRef(ref)} must point at a water_deficit_hit_rate`);
+      }
+      const harvests = getPointer(doc, ref.pointer.replace(/water_deficit_hit_rate$/, "water_deficit_years"));
+      if (typeof node !== "number" || typeof harvests !== "number") {
+        throw new Error(`${serializeRef(ref)} has no hits`);
+      }
+      return Math.round(node * harvests);
     }
     case "areayield": {
       if (!ref.pointer.includes("/production_t/")) {
