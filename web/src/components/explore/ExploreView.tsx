@@ -899,7 +899,7 @@ export default function ExploreView(props: Props) {
                     ))}
                   </select>
               </label>
-              {/* The target of /explorar/#foco, the home page's "Ver o seu estado no mapa". */}
+              {/* The target of /explorar/#foco: a link can open the map with the state choice in view. */}
               <label className="explore__control" id="foco">
                 <span className="explore__control-label small">Foco</span>
                   <select value={view.uf ?? ""} onChange={(e) => setView((v) => ({ ...v, uf: e.target.value || null }))}>

@@ -603,7 +603,7 @@ test.describe("the intro band", () => {
     );
     await expect(intro.getByRole("list", { name: "O que você pode fazer" }).getByRole("link")).toHaveText([
       "Ver o mapa dos municípios",
-      "Ver o seu estado no mapa",
+      "Procurar o seu município",
       "Ler a análise: seca e soja",
     ]);
     const band = await intro.boundingBox();
@@ -617,14 +617,11 @@ test.describe("the intro band", () => {
     await expect(page).toHaveURL(/\/#achado$/);
     await expect(page.locator(".opening__title")).toBeInViewport();
 
-    // The state focus of the map: the link points at the control that chooses the state.
+    // The search of the page, now that every municipality has its page.
     await page.goto("/");
-    await page.getByRole("link", { name: "Ver o seu estado no mapa" }).click();
-    await expect(page.locator(".explore__map")).toHaveAttribute("data-ready", "true");
-    // Once the island has written the view into the URL, the fragment is still there.
-    await expect(page).toHaveURL(/\/explorar\/\?serie=soja&medida=producao&ano=2025#foco$/);
-    await expect(page.getByRole("combobox", { name: "Foco" })).toBeInViewport();
-    expect(await page.locator("#foco").evaluate((el) => el.matches(":target"))).toBe(true);
+    await page.getByRole("link", { name: "Procurar o seu município" }).click();
+    await expect(page).toHaveURL(/\/#busca$/);
+    await expect(page.getByRole("combobox", { name: "Município" })).toBeInViewport();
 
     await page.goto("/");
     await page.getByRole("link", { name: "Ver o mapa dos municípios" }).click();

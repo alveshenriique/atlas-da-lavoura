@@ -12,7 +12,6 @@ import DroughtBlock from "../../components/municipality/DroughtBlock.astro";
 import YieldLines from "../../components/municipality/YieldLines.astro";
 import Num from "../../components/Num.astro";
 import Structural from "../../components/Structural.astro";
-import UnderConstruction from "../../components/UnderConstruction.astro";
 import Base from "../../layouts/Base.astro";
 import { brdwgdShortCitation } from "../../lib/citations";
 import { dataBasePath, loadDataFile } from "../../lib/data";
@@ -76,12 +75,6 @@ const firstLater = m.firstPamYear !== null && Number(m.firstPamYear.value) > 197
       ))
     }
   </Fragment>
-  <UnderConstruction>
-    <p>
-      A ficha deste município ainda está em revisão. A produção dele também pode ser vista no
-      mapa do <a href={`/explorar/?uf=${m.uf}`}>Explorar, com {m.stateName} em foco</a>.
-    </p>
-  </UnderConstruction>
 
   <article class="ficha">
     <div class="container">

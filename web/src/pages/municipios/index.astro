@@ -7,7 +7,6 @@ import "../../styles/municipality.css";
 
 import MunicipalitySearch from "../../components/MunicipalitySearch.astro";
 import Num from "../../components/Num.astro";
-import UnderConstruction from "../../components/UnderConstruction.astro";
 import Base from "../../layouts/Base.astro";
 import { loadDataFile } from "../../lib/data";
 import { sourced } from "../../lib/sourced";
@@ -29,12 +28,6 @@ const total = sourced("catalog.json", "/municipality_count", "int");
   title="Municípios"
   description="A ficha de cada um dos municípios do Brasil: produção de soja, milho e café, comparação com a região, o estado e o Brasil, e o risco de seca da região."
 >
-  <UnderConstruction>
-    <p>
-      As fichas dos municípios estão em revisão. A produção de cada município também pode ser vista
-      no mapa do <a href="/explorar/">Explorar</a>.
-    </p>
-  </UnderConstruction>
   <div class="container ficha">
     <h1 class="ficha__title">Municípios</h1>
     <p class="ficha__text">
